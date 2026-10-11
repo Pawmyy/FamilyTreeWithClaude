@@ -3,7 +3,7 @@ import SpriteText from 'https://esm.sh/three-spritetext@1.10.0?deps=three@0.186.
 import * as THREE from 'https://esm.sh/three@0.186.1';
 import { createFinder, rank } from './finder.js';
 import { getLang, has, LANGS, setLang, t } from './i18n.js';
-import { closeness, descendantCounts, isDescent, kinship, shortestPath } from './kinship.js';
+import { closeness, isDescent, kinship, shortestPath } from './kinship.js';
 import { createMap, lookUp } from './map.js';
 import { fullName, nameRecord, yearOf } from './record.js';
 import { kinshipTerm } from './terms.js';
@@ -18,7 +18,7 @@ let g = { nodes: [], edges: [], rivals: [], versions: [], sources: [], log: [], 
 let byId = new Map();
 let selected = null; // { group: 'nodes' | 'edges', id }
 let onPath = new Set(); // node ids and 'e' + edge ids on the highlighted path
-let view = '3d'; // '3d' | '2d' | 'atlas' | 'tree' | 'map'
+let view = '3d'; // '3d' | '2d' | 'tree' | 'map'
 let framed = false;
 let showRivals = false;
 let relation = null; // which relative is being added: 'parent' | 'partner' | 'child' | 'sibling'
@@ -26,7 +26,7 @@ let flyingUntil = 0; // while the camera is being moved for the user, the pan li
 let filters = []; // tags chosen in the search box: { kind: 'family' | 'place' | 'born', value, label }
 let timeline = null; // a year, while the timeline is on
 let seen = new Map(); // what the filters make of each node: 'shown', 'faded' or 'hidden' (see sight)
-let maxSteps = 2; // the Atlas draws a line between people up to this many steps apart
+let maxSteps = 2; // 3D and 2D draw a closeness line between people up to this many steps apart
 let shiftHeld = false;
 let mapView = null; // made the first time the map is opened
 let placing = null; // id of a place waiting for a click on the map
@@ -189,7 +189,7 @@ const Graph = new ForceGraph3D($('graph'))
     if (!framed) frame();
     framed = true;
   });
-// Each link pulls its ends to the distance it asks for. The Atlas's closeness lines also say how hard.
+// Each link pulls its ends to the distance it asks for. Closeness lines also say how hard.
 const usualStrength = Graph.d3Force('link').strength();
 Graph.d3Force('link').distance((l) => l.distance).strength((l) => l.strength ?? usualStrength(l));
 // Cap the range of repulsion so unconnected families stay nearby instead of drifting off.
@@ -218,7 +218,7 @@ Graph.controls().addEventListener('change', () => {
 
 // Lines to or from someone filtered out are not drawn, nor closeness lines beyond the chosen number of steps.
 function linkVisible(link) {
-  return !link.faded && (!link.steps || link.steps <= maxSteps);
+  return !link.faded && (!link.steps || (link.steps > 1 && link.steps <= maxSteps));
 }
 
 // Dragging turns the 3D view and moves the flat ones. In 3D, hold Shift (or use the right button) to move.
@@ -286,16 +286,40 @@ function setView(next) {
 const face = (node) => ({ ref: node.id, kind: node.kind, photo: node.photo, label: graphLabel(node), hover: label(node), color: nodeColor(node), size: 1 });
 const lookOf = (edge) => ({ edge: edge.id, type: edge.type, label: linkText(edge), color: edge.accepted ? colorOf('link', edge.type) : ink.danger });
 
+// Closeness: every two people on the same family tree pull gently toward each other, harder the fewer
+// steps apart they are, so near relatives settle together and distant ones apart. One step apart
+// (parent and child, partners) is already drawn through their household, so lines start at two steps.
+function closenessLinks() {
+  const people = g.nodes.filter((n) => n.kind === 'person');
+  const steps = closeness(g.edges);
+  const links = [];
+  people.forEach((a, i) => {
+    for (const b of people.slice(i + 1)) {
+      const apart = steps(a.id, b.id);
+      if (apart === undefined) continue;
+      links.push({
+        source: a.id, target: b.id, steps: apart, elbow: false, edge: null, type: 'CLOSE',
+        label: t('close.steps', { count: apart }), color: ink.muted,
+        distance: apart * 40, strength: 0.15 / (apart * apart),
+      });
+    }
+  });
+  return links;
+}
+
 // 3D and 2D: everything in the record, left to find its own place.
 function graphScene() {
   return {
     nodes: g.nodes.map((n) => ({ id: n.id, copy: false, ...face(n) })),
-    links: (showRivals ? [...g.edges, ...g.rivals] : g.edges).map((e) => {
-      // CHILD_OF is stored child -> household; draw it household -> child so the arrow lands on the child.
-      const [source, target] = e.type === 'CHILD_OF' ? [e.dst, e.src] : [e.src, e.dst];
-      const distance = DISTANCE[e.type === 'CHILD_OF' ? e.props.kind ?? 'birth' : e.type] ?? DISTANCE.other;
-      return { source, target, elbow: false, distance, ...lookOf(e) };
-    }),
+    links: [
+      ...(showRivals ? [...g.edges, ...g.rivals] : g.edges).map((e) => {
+        // CHILD_OF is stored child -> household; draw it household -> child so the arrow lands on the child.
+        const [source, target] = e.type === 'CHILD_OF' ? [e.dst, e.src] : [e.src, e.dst];
+        const distance = DISTANCE[e.type === 'CHILD_OF' ? e.props.kind ?? 'birth' : e.type] ?? DISTANCE.other;
+        return { source, target, elbow: false, distance, ...lookOf(e) };
+      }),
+      ...closenessLinks(),
+    ],
   };
 }
 
@@ -313,30 +337,6 @@ function treeScene() {
       ...laid.households.map((h) => ({ id: h.key, copy: false, at: h, ...face(byId.get(h.household)) })),
     ],
     links: laid.lines.map((line) => ({ source: line.source, target: line.target, elbow: line.type === 'CHILD_OF', distance: 30, ...lookOf(edgeOf(line)) })),
-  };
-}
-
-// Atlas: people only, every one pulled toward every other by how close they are on the family tree,
-// so families gather into clusters. Someone with more descendants is drawn bigger.
-function atlasScene() {
-  const people = g.nodes.filter((n) => n.kind === 'person');
-  const steps = closeness(g.edges);
-  const below = descendantCounts(g.edges);
-  const links = [];
-  people.forEach((a, i) => {
-    for (const b of people.slice(i + 1)) {
-      const apart = steps(a.id, b.id);
-      if (apart === undefined) continue;
-      links.push({
-        source: a.id, target: b.id, steps: apart, elbow: false, edge: null, type: 'CLOSE',
-        label: t('atlas.steps', { count: apart }), color: apart === 1 ? ink.accent : ink.muted,
-        distance: apart * 34, strength: 0.5 / (apart * apart),
-      });
-    }
-  });
-  return {
-    nodes: people.map((p) => ({ id: p.id, copy: false, ...face(p), size: 1 + 0.45 * Math.log2(1 + (below.get(p.id) ?? 0)) })),
-    links,
   };
 }
 
@@ -374,7 +374,7 @@ function sight() {
 
 function draw() {
   seen = sight();
-  const scene = { tree: treeScene, atlas: atlasScene }[view]?.() ?? graphScene();
+  const scene = view === 'tree' ? treeScene() : graphScene();
   const state = (ref) => seen.get(ref) ?? 'shown';
   scene.nodes = scene.nodes.filter((n) => state(n.ref) !== 'hidden').map((n) => ({ ...n, faded: state(n.ref) === 'faded' }));
   const kept = new Map(scene.nodes.map((n) => [n.id, n]));
@@ -1186,7 +1186,7 @@ $('timelineOn').onchange = $('timelineYear').oninput = () => {
 };
 $('closeSteps').oninput = () => {
   maxSteps = Number($('closeSteps').value);
-  $('closeLabel').textContent = t('atlas.upTo', { count: maxSteps });
+  $('closeLabel').textContent = t('close.upTo', { count: maxSteps });
   Graph.linkVisibility(linkVisible);
 };
 $('lookUpPlace').onclick = () => findPlace(byId.get(selected.id));
@@ -1288,7 +1288,7 @@ function relabel(lang) {
   for (const [id, finder] of Object.entries(finders)) finder.input.placeholder = t(id === 'relExisting' ? 'rel.existingHint' : 'bar.search');
   fillChoices();
   $('result').textContent = '';
-  $('closeLabel').textContent = t('atlas.upTo', { count: maxSteps });
+  $('closeLabel').textContent = t('close.upTo', { count: maxSteps });
   showLegend();
   syncTimeline();
   applyFilters();

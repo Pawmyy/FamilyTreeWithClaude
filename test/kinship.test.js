@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { closeness, descendantCounts, kinship, shortestPath } from '../public/kinship.js';
+import { closeness, kinship, shortestPath } from '../public/kinship.js';
 import { kinshipTerm } from '../public/terms.js';
 
 // Tiny fixture builder: people are just string ids.
@@ -133,13 +133,6 @@ test('closeness counts steps on the family tree', () => {
   assert.equal(steps('cara', 'cara'), 0);
   assert.equal(steps('cara', 'quin'), undefined, 'nothing joins them');
   assert.equal(steps('ivy', 'cara'), 4, 'a godparent link is not a step on the tree: Ivy is her uncle Frank\'s wife');
-});
-
-test('descendants are counted once each, however many lines lead to them', () => {
-  const counts = descendantCounts(edges);
-  assert.equal(counts.get('george'), 7); // anna, frank, cara, jack, lily, noah, pia
-  assert.equal(counts.get('ben'), 5); // cara, eli, gus, lily, pia; Cara is his by birth, not counted again as a step-child
-  assert.equal(counts.get('pia'), undefined);
 });
 
 test('years are read from free text, with Buddhist Era years on the same scale', async () => {

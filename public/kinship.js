@@ -116,28 +116,6 @@ export function closeness(edges) {
   return (a, b) => from(a).get(b);
 }
 
-// How many descendants each person has, as a Map from person to count. People with none are absent.
-export function descendantCounts(edges) {
-  const childrenOf = new Map();
-  for (const { partners, children } of households(edges).values()) {
-    for (const p of partners) childrenOf.set(p, [...(childrenOf.get(p) ?? []), ...children]);
-  }
-  const counts = new Map();
-  for (const person of childrenOf.keys()) {
-    const below = new Set();
-    const queue = [person];
-    for (const cur of queue) {
-      for (const child of childrenOf.get(cur) ?? []) {
-        if (below.has(child) || child === person) continue;
-        below.add(child);
-        queue.push(child);
-      }
-    }
-    counts.set(person, below.size);
-  }
-  return counts;
-}
-
 // Shortest chain of links of any type between two nodes, ignoring direction.
 // Returns [{ edge, from, to }, ...] in walking order, or null if unconnected.
 export function shortestPath(a, b, edges) {
