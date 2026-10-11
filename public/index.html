@@ -148,6 +148,12 @@
       <p class="hint" id="timelineLabel"></p>
     </fieldset>
 
+    <fieldset>
+      <legend data-i18n="close.title"></legend>
+      <label class="check"><input type="checkbox" id="closeOn"><span data-i18n="close.on"></span></label>
+      <label><span id="closeLabel"></span><input type="range" id="closeSteps" min="2" max="8" value="2" disabled></label>
+    </fieldset>
+
     <div id="colorRows"></div>
 
     <details>
@@ -182,7 +188,6 @@
       <button data-view="tree" data-i18n="view.tree"></button>
       <button data-view="map" data-i18n="view.map"></button>
     </div>
-    <button id="close" class="ghost" data-i18n="bar.close" data-i18n-title="bar.closeHint"></button>
     <button id="rivals" class="ghost" data-i18n="bar.disputed" data-i18n-title="bar.disputedHint"></button>
     <button id="fit" class="ghost" data-i18n="bar.fit" data-i18n-title="bar.fitHint"></button>
     <button id="langSwitch" class="ghost"></button>

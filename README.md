@@ -55,7 +55,7 @@ A household can start with no parents recorded: add the children, and attach par
 
 Switched at the top right.
 
-- **3D** and **2D**: everything in the record, finding its own place. Link length shows the kind of tie: partners sit closest, then birth children, adopted, step and foster, with free-form links longest. With **Closeness** switched on, every two people on the same family tree pull gently toward each other by their closeness, the number of steps between them (parent to child is one step, partners one step), so near relatives settle together and distant ones apart. **Disputed** also draws the versions of links that are not accepted.
+- **3D** and **2D**: everything in the record, finding its own place. Link length shows the kind of tie: partners sit closest, then birth children, adopted, step and foster, with free-form links longest. On top of that, every two people on the same family tree pull gently toward each other by their closeness, the number of steps between them (parent to child is one step, partners one step), so near relatives settle together and distant ones apart. Closeness lines can be switched on in the View tab: one is drawn between people up to a number of steps apart that you choose, thinner the further apart. **Disputed** also draws the versions of links that are not accepted.
 - **Tree**: the traditional family tree, built as its own structure (`public/tree.js`). The whole family is drawn as descendant trees side by side, one per founder, generations in rows, with square-cornered lines down to children. A household's children are drawn under the partner whose family name they carry. A person is drawn in full once, under their own parents; beside a partner in another tree they appear as a faint copy marked ↗, and clicking it goes to the full one. Step and foster ties, places and events are left out of this view.
 - **Map**: places on a real map (OpenStreetMap), held to Thailand and China for now. A new place is looked up by its name; one match is used, several are offered for you to pick, and if nothing is found you click the spot. Only the place's name is sent to the lookup service. A place lists the people linked to it by born in, lived in or died in.
 
@@ -81,7 +81,7 @@ The panel folds away with the ☰ button, or by clicking the open tab again.
 - **Edit**: opens whenever you select something. A person's details, adding a relative (a parent, partner, child or sibling; the household in between is made for you, a child is offered the parents' family name, and a partner can take the other's family name and record the date they married), their color, and their name record with the versions of each fact. For a place, where it is on the map.
 - **Links**: add, change or remove a link, or save a rival version of one.
 - **Related**: how two people are related.
-- **View**: the timeline, the colors shared by many things, the list of sources, and the edit log, where removals can be undone.
+- **View**: the timeline, whether closeness lines are drawn and for how many steps apart, the colors shared by many things, the list of sources, and the edit log, where removals can be undone.
 
 ## Languages and themes
 
