@@ -477,6 +477,11 @@ export function createApp(db, pageDir = PUBLIC) {
   return createServer(async (req, res) => {
     const { pathname } = new URL(req.url, 'http://localhost');
     const [, api, collection, rawId, action] = pathname.split('/');
+    // The Google Maps key is kept out of the page's files and handed over here (see public/key.js).
+    if (pathname === '/key.js' && process.env.GOOGLE_MAPS_KEY) {
+      res.writeHead(200, { 'content-type': 'text/javascript' });
+      return res.end(`export const GOOGLE_MAPS_KEY = ${JSON.stringify(process.env.GOOGLE_MAPS_KEY)};\n`);
+    }
     if (api !== 'api') return serveStatic(root, pathname, res);
     const id = Number(rawId);
     try {
@@ -533,6 +538,10 @@ export function createApp(db, pageDir = PUBLIC) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = process.env.PORT ?? 3000;
+  // A .env file beside this one may hold GOOGLE_MAPS_KEY; having none is fine.
+  try {
+    process.loadEnvFile(fileURLToPath(new URL('.env', import.meta.url)));
+  } catch { /* no .env */ }
   // Bound to localhost only: this holds personal data about living people.
   createApp(openDb(process.env.DB ?? 'family.db')).listen(port, '127.0.0.1', () => {
     console.log(`Family graph running at http://localhost:${port}`);

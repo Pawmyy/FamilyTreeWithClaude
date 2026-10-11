@@ -2,6 +2,8 @@
 *.db
 *.db-journal
 *.bak
+# Holds the Google Maps key (see public/key.js).
+.env
 node_modules/
 dist/
 .DS_Store

@@ -136,7 +136,12 @@ input[type="range"] { padding: 0; min-height: 28px; accent-color: var(--accent);
 .span input::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; box-sizing: border-box; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); cursor: pointer; }
 .span input::-moz-range-thumb { pointer-events: auto; box-sizing: border-box; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); cursor: pointer; }
 #map ~ #legend { background: var(--panel); padding: 2px 8px; border-radius: 6px; }
+/* Google's name and terms run along the bottom of its map and have to stay in sight. */
+#map:not([hidden]) ~ #legend { bottom: 36px; }
 .map-popup { display: grid; gap: 6px; min-width: 180px; }
+/* A place's name over the map, with a pale edge so it reads on any ground. */
+.map-label { text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 6px #fff; }
+.map-problem { position: absolute; inset: 0; margin: 0; display: grid; place-content: center; padding: 24px; text-align: center; color: var(--muted); }
 .map-popup button { text-align: left; }
 /* The key to the closeness lines: a short stroke of each color beside its number of steps. */
 .key { display: flex; gap: 12px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }

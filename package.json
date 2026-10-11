@@ -24,7 +24,6 @@
     "electron": "^38.8.6",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
-    "leaflet": "^1.9.4",
     "three": "^0.186.1",
     "three-spritetext": "^1.10.0"
   },

@@ -455,7 +455,7 @@ const isPlaced = (place) => place.props.lat !== undefined;
 
 function drawMap() {
   if (view !== 'map') return;
-  mapView ??= createMap($('map'), { onClick: (spot) => {
+  mapView ??= createMap($('map'), { lang: getLang(), problem: t, onClick: (spot) => {
     if (placing === null) return;
     const id = placing;
     placing = null;

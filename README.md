@@ -15,7 +15,9 @@ npm run examples   # three film families in their own record, on http://localhos
 
 Data lives in `family.db` (set `DB=path` to use another file), photos included. Back it up by copying the file.
 A database from the first version is converted the first time it is opened; the original is kept beside it as `family.db.v1.bak`.
-The page loads its libraries (3d-force-graph, three.js, Leaflet) from esm.sh and unpkg, and the map loads its tiles from OpenStreetMap, so the views need an internet connection.
+The page loads its libraries (3d-force-graph, three.js) from esm.sh, and the map comes from Google Maps, so the views need an internet connection.
+
+The map needs a Google Maps key with the Maps JavaScript API and the Geocoding API switched on. Put it in a file named `.env` beside `server.js`, as `GOOGLE_MAPS_KEY=...`; git ignores that file, and the key is never written into the repository. `npm start` hands it to the page, and `web/build.js` puts it into the apps it builds; the release workflow takes it from the repository secret `GOOGLE_MAPS_KEY`. A key inside an installed app can be read out of it, so restrict the key to those two APIs and cap its daily use in Google Cloud. Without a key the Map view says there is no map.
 
 Terms are defined in `GLOSSARY.md`; the reasons behind the main design choices are in `docs/adr/`.
 
@@ -58,7 +60,7 @@ Switched at the top right.
 
 - **3D** and **2D**: everything in the record, finding its own place. Link length shows the kind of tie: partners sit closest, then birth children, adopted, step and foster, with free-form links longest. On top of that, every two people on the same family tree pull gently toward each other by their closeness, the number of steps between them (parent to child is one step, partners one step), so near relatives settle together and distant ones apart. Closeness lines can be switched on in the View tab: one is drawn between people up to a number of steps apart that you choose, colored by the number of steps (warm for the nearest, cool for the furthest) and thinner the further apart. **Disputed** rings every person who has a fact with more than one version, and draws the versions of links that are not accepted, bent away from the accepted one. In the tree it shows the rings only.
 - **Tree**: the traditional family tree, built as its own structure (`public/tree.js`). The whole family is drawn as descendant trees side by side, one per founder, generations in rows, with square-cornered lines down to children. A household's children are drawn under the partner whose family name they carry. A person is drawn in full once, under their own parents; beside a partner in another tree they appear as a faint copy marked ↗, and clicking it goes to the full one. Step and foster ties, places and events are left out of this view.
-- **Map**: places on a real map (OpenStreetMap), held to Thailand and China for now. A new place is looked up by its name; one match is used, several are offered for you to pick, and if nothing is found you click the spot. Only the place's name is sent to the lookup service. A place lists the people linked to it by born in, lived in or died in.
+- **Map**: places on a real map (Google Maps), held to Thailand and China for now. A new place is looked up by its name; one match is used, several are offered for you to pick, and if nothing is found you click the spot. Only the place's name is sent to Google's look-up. A place lists the people linked to it by born in, lived in or died in.
 
 Shapes show the kind of thing: sphere for a person, diamond for a household, cube for a place, pyramid for an event. A photo replaces the shape.
 
@@ -141,6 +143,7 @@ Both choices are remembered in the browser.
 | `examples.js` | Builds the example record: the Skywalkers, the Corleones, and the Weasleys and Potters. |
 | `public/tree.js` | The traditional tree: which tree each person belongs in, and where everything is drawn. |
 | `public/map.js` | The map view and looking a place up by name. |
+| `public/key.js` | Where the page reads the Google Maps key from; the key itself is filled in when served or built. |
 | `public/record.js` | Name-record ordering, shared by server and page. |
 
 ## Relationship rules

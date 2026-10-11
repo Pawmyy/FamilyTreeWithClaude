@@ -11,6 +11,11 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url';
 
 const at = (path) => new URL('../' + path, import.meta.url);
+// The Google Maps key for the apps, from the environment or a .env file (see public/key.js).
+try {
+  process.loadEnvFile(fileURLToPath(at('.env')));
+} catch { /* no .env */ }
+const MAPS_KEY = process.env.GOOGLE_MAPS_KEY ?? '';
 const read = (path) => readFileSync(at(path), 'utf8');
 const swap = (text, from, to) => {
   if (!text.includes(from)) throw new Error('Nothing to replace: ' + from);
@@ -49,6 +54,7 @@ function artifact() {
 
 // An app has to open without the internet, so the page and the libraries it fetches in the browser
 // (the copies in node_modules) are packed into one file. `backend` says where the record is kept.
+// Only the map still needs the internet: Google's map code cannot be packed.
 async function packed(dir, backend) {
   const write = fresh(dir);
   await build({
@@ -62,14 +68,13 @@ async function packed(dir, backend) {
         pack.onResolve({ filter: /^https:\/\/esm\.sh\// }, ({ path, resolveDir, kind }) =>
           pack.resolve(path.match(/esm\.sh\/((?:@[^/]+\/)?[^@?]+)/)[1], { resolveDir, kind }));
         if (backend) pack.onResolve({ filter: /^\.\/backend\.js$/ }, () => ({ path: fileURLToPath(at(backend)) }));
+        pack.onLoad({ filter: /[\\/]public[\\/]key\.js$/ }, () => ({ contents: `export const GOOGLE_MAPS_KEY = ${JSON.stringify(MAPS_KEY)};` }));
       },
     }],
   });
-  // The map's own styles and pictures, which the page otherwise fetches from the web.
-  write('app.css', read('node_modules/leaflet/dist/leaflet.css') + read('public/app.css'));
-  cpSync(at('node_modules/leaflet/dist/images'), at(`${dir}/images`), { recursive: true });
-  const page = swap(read('public/index.html'), '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">', '');
-  return { write, page };
+  if (!MAPS_KEY) console.warn(`${dir}: no GOOGLE_MAPS_KEY, so this build has no map.`);
+  write('app.css', read('public/app.css'));
+  return { write, page: read('public/index.html') };
 }
 
 async function desktop() {

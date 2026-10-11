@@ -134,6 +134,8 @@ const STRINGS = {
     'map.byHand': 'Set it by clicking the map',
     'map.saved': 'Placed on the map',
     'map.unplaced': 'Not on the map yet:',
+    'map.noKey': 'This copy was made without a Google Maps key, so it has no map.',
+    'map.offline': 'The map could not be loaded. It needs the internet.',
 
     'colors.title': 'Color',
     'colors.ofFamily': 'The {name} family (everyone born with that name)',
@@ -374,6 +376,8 @@ const STRINGS = {
     'map.byHand': 'กำหนดโดยคลิกบนแผนที่',
     'map.saved': 'วางบนแผนที่แล้ว',
     'map.unplaced': 'ยังไม่อยู่บนแผนที่:',
+    'map.noKey': 'แอปชุดนี้สร้างขึ้นโดยไม่มีคีย์ Google Maps จึงไม่มีแผนที่',
+    'map.offline': 'โหลดแผนที่ไม่ได้ ต้องเชื่อมต่ออินเทอร์เน็ต',
 
     'colors.title': 'สี',
     'colors.ofFamily': 'ตระกูล {name} (ทุกคนที่เกิดมาใช้นามสกุลนี้)',
