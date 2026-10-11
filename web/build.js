@@ -68,7 +68,7 @@ async function packed(dir, backend) {
   // The map's own styles and pictures, which the page otherwise fetches from the web.
   write('app.css', read('node_modules/leaflet/dist/leaflet.css') + read('public/app.css'));
   cpSync(at('node_modules/leaflet/dist/images'), at(`${dir}/images`), { recursive: true });
-  const page = swap(read('public/index.html'), '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">\n', '');
+  const page = swap(read('public/index.html'), '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">', '');
   return { write, page };
 }
 
