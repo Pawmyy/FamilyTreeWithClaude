@@ -13,6 +13,7 @@
     "examples": "node examples.js && DB=examples.db PORT=3001 node server.js",
     "test": "node --test",
     "build": "node web/build.js",
+    "website": "node aws/local.mjs",
     "desktop": "node web/build.js desktop && electron .",
     "installer": "node web/build.js desktop && electron-builder --publish never"
   },

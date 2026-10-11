@@ -125,6 +125,36 @@ holds the two to the same behavior. A source's file goes to the artifact's file 
 published with the `assets` capability beside `db` for files to be attached. The Map view and looking places up are left out, because an artifact
 cannot reach a map service.
 
+## As a website, with sign-in and shared records
+
+`aws/` puts the page on the web for a family to keep one record together. People sign in with an email and a
+password, and each either starts a record of their own or joins someone else's with a code.
+
+- **A record has no owner.** Everyone in it has the same rights. Any member can get the code that shares it,
+  replace that code, and remove any other member; removing someone replaces the code, so they cannot come
+  back with the old one. A record is deleted only when its last member leaves.
+- **A code is made only when someone asks for one**, and stays the same until it is replaced.
+- **Changes by others show within about ten seconds.** When two people change the same fact without having
+  seen each other's change, the later one is shown and the earlier is kept as another version of that fact.
+- **The edit log says who made each change.**
+- **It needs the internet**, to open a record and to save.
+
+`aws/template.yml` is everything it runs on, as one CloudFormation stack: the page in S3 behind CloudFront,
+sign-in by Cognito, the service (`aws/api/`) as one Lambda function behind API Gateway, the records in
+DynamoDB with 35 days of point-in-time recovery, the files of sources in S3, and a budget that writes to
+you when a month's charges pass a limit. `ALARM_EMAIL=you@example.com aws/deploy.sh` sets it up or brings
+it up to date and prints the address; it needs the AWS CLI, signed in. Deleting the stack removes
+everything except the records, the files and the sign-ins, which are held back on purpose.
+
+`npm run website` runs the same page and service on this computer, at http://localhost:3100, for trying
+things out. Signing in there is the real one, so it needs a deployed stack and the internet, but its records
+are kept in memory only and never touch the ones on AWS.
+
+`aws/api/service.mjs` is the service apart from where it keeps things, `web/keeper.cloud.js` is how the page
+reads and writes a shared record, and `test/cloud.test.js` runs two people against both. `web/account.js`
+draws the sign-in, the choice of record and the sharing menu. The website's map uses a Google Maps key of
+its own, `GOOGLE_MAPS_WEB_KEY`, which can be locked to the website's address.
+
 ## Languages and themes
 
 The interface is in English and Thai, starting in Thai until you switch. All text lives in `public/i18n.js`;
