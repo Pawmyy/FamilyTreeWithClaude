@@ -48,12 +48,25 @@ _Avoid_: Relation, blood relation
 **Family line**:
 The chain of partners and descent that joins two people who have kinship.
 
+**Closeness**:
+How many steps apart two people are on the family tree, where parent to child is one step and partners are one step. Siblings are 2 apart, first cousins 4.
+_Avoid_: Distance, relatedness, degree
+
 **Link**:
 Any recorded tie between two things in the graph that is not partnership or childhood, such as godparent or lived-in.
 _Avoid_: Relationship, association
 
 **Connection**:
 Any chain joining two people, through links of any sort. In-laws and godparents are connections, not kinship.
+
+### Finding and filtering
+
+**Tag**:
+A family name, a place or a year of birth, chosen in the search box to show only the people it fits. Everyone else fades.
+_Avoid_: Filter, label, category
+
+**Timeline**:
+A chosen year. People not alive in it fade; people with no birth date are hidden, since the record cannot place them.
 
 ### The tree
 

@@ -135,9 +135,15 @@ li.version input, li.version select { min-height: 34px; padding: 4px 8px; font-s
 #graph { position: absolute; inset: 0; }
 /* z-index 0 keeps the map's own layers underneath the bar, legend and messages. */
 #map { position: absolute; inset: 0; z-index: 0; }
-#bar, #legend, #toast, #unplaced { z-index: 1; }
-#unplaced { position: absolute; top: 68px; left: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
-#unplaced button { width: auto; }
+#bar, #legend, #toast { z-index: 1; }
+#notices { position: absolute; top: 68px; left: 12px; right: 12px; display: grid; gap: 8px; justify-items: start; pointer-events: none; z-index: 1; }
+#notices > * { pointer-events: auto; }
+#chips, #unplaced { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+#unplaced { padding: 8px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+#notices button { width: auto; min-height: 34px; padding: 4px 12px; border-radius: 18px; }
+label.check { display: flex; gap: 8px; align-items: center; }
+label.check input { width: auto; min-height: 0; }
+input[type="range"] { padding: 0; min-height: 28px; accent-color: var(--accent); }
 #map ~ #legend { background: var(--panel); padding: 2px 8px; border-radius: 6px; }
 .map-popup { display: grid; gap: 6px; min-width: 180px; }
 .map-popup button { text-align: left; }

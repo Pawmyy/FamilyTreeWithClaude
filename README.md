@@ -10,6 +10,7 @@ Needs Node 24+ (uses the built-in `node:sqlite`). No `npm install`.
 npm run seed    # optional: load a sample family into family.db
 npm start       # http://localhost:3000, restarts itself when server.js changes
 npm test
+npm run examples   # three film families in their own record, on http://localhost:3001
 ```
 
 Data lives in `family.db` (set `DB=path` to use another file), photos included. Back it up by copying the file.
@@ -54,28 +55,34 @@ A household can start with no parents recorded: add the children, and attach par
 
 Switched at the top right.
 
-- **3D** and **2D**: everything in the record, finding its own place. Link length shows closeness: partners sit closest, then birth children, adopted, step and foster, with free-form links longest. **Disputed** also draws the versions of links that are not accepted.
+- **3D** and **2D**: everything in the record, finding its own place. Link length shows the kind of tie: partners sit closest, then birth children, adopted, step and foster, with free-form links longest. **Disputed** also draws the versions of links that are not accepted.
+- **Atlas**: people only, as a map of clusters. Every pair of people is pulled together by their closeness, the number of steps between them on the family tree (parent to child is one step, partners one step), so families gather into groups and distant relatives sit far apart. A line is drawn between people up to a number of steps apart that you choose in the View tab, thinner the further apart. People with more descendants are drawn bigger. People with no path between them are not pulled together at all.
 - **Tree**: the traditional family tree, built as its own structure (`public/tree.js`). The whole family is drawn as descendant trees side by side, one per founder, generations in rows, with square-cornered lines down to children. A household's children are drawn under the partner whose family name they carry. A person is drawn in full once, under their own parents; beside a partner in another tree they appear as a faint copy marked ↗, and clicking it goes to the full one. Step and foster ties, places and events are left out of this view.
 - **Map**: places on a real map (OpenStreetMap), held to Thailand and China for now. A new place is looked up by its name; one match is used, several are offered for you to pick, and if nothing is found you click the spot. Only the place's name is sent to the lookup service. A place lists the people linked to it by born in, lived in or died in.
 
 Shapes show the kind of thing: sphere for a person, diamond for a household, cube for a place, pyramid for an event. A photo replaces the shape.
 
-A person wears the color of the family name they were born with, and keeps it for life. The color is worked out from the name itself, so it does not shift when other people are added or removed; someone with no family name recorded is grey. Colors for each family name, each kind of link, and places and events can be chosen in the Colors tab and are kept in the database.
+Dragging turns the 3D view and moves the flat ones; in 3D, hold Shift or use the right button to move. Zoom is limited to between a single node and the whole family, and the family cannot be dragged off the screen. **Fit** re-frames everything.
 
-Zoom is limited to between a single node and the whole family, and panning cannot push the family off the screen. **Fit** re-frames everything.
+### Finding and filtering
+
+The search box finds anyone by any name they have carried, or by nickname, and brings them to the middle of the picture without changing which way you are looking. It also offers **tags**, marked `#`: a family name, a place, or a year of birth (typed in either calendar). Picking a tag fades everyone it does not fit. Several tags of one kind widen the match; tags of different kinds narrow it. A family-name tag fits anyone who has ever carried that name.
+
+The **timeline** in the View tab picks a year: people not alive then fade, and people with no birth date are hidden. Someone with no death date counts as alive for 100 years.
+
+### Colors
+
+A person wears the color of the family name they were born with and keeps it for life, so everyone born with one name shares one color. It is worked out from the name itself until you choose another. Select anything and its color can be changed in the Edit tab: for a person with a family name that changes the whole family; anything else (a household, a place, an event, a person with no family name) gets a color of its own. Colors for each kind of link are in the View tab. All choices are kept in the database.
 
 ## Side panel
 
 The panel folds away with the ☰ button, or by clicking the open tab again.
 
-- **People**: add a person, place or event. Open someone (click them, or search by name) to edit their details or add a relative: a parent, partner, child or sibling. The household in between is made for you, a new child is offered the parents' family name, and a new partner can take the other's family name.
+- **Add**: a new person, place or event.
+- **Edit**: opens whenever you select something. A person's details, adding a relative (a parent, partner, child or sibling; the household in between is made for you, a child is offered the parents' family name, and a partner can take the other's family name and record the date they married), their color, and their name record with the versions of each fact. For a place, where it is on the map.
 - **Links**: add, change or remove a link, or save a rival version of one.
 - **Related**: how two people are related.
-- **Record**: a person's name record and the versions of each fact, with who each is according to and its sources; the list of sources; and the edit log, where removals can be undone.
-- **Colors**: the color of each family name, each kind of link, and places and events.
-
-Wherever a person, household or place is chosen you type a few letters and pick from the matches. People are found by any name
-they have carried, or by nickname.
+- **View**: the timeline, how many steps the Atlas draws lines for, the colors shared by many things, the list of sources, and the edit log, where removals can be undone.
 
 ## Languages and themes
 
@@ -91,7 +98,8 @@ Both choices are remembered in the browser.
 | `public/index.html`, `app.css`, `app.js` | The page: markup, themes, and behavior. |
 | `public/i18n.js` | Every interface text, per language. |
 | `public/finder.js` | The fuzzy finder. |
-| `public/kinship.js`, `terms.js` | Working out how two people are related, and the word for it in each language. |
+| `public/kinship.js`, `terms.js` | Working out how two people are related, how close everyone is, and the word for a relationship in each language. |
+| `examples.js` | Builds the example record: the Skywalkers, the Corleones, and the Weasleys and Potters. |
 | `public/tree.js` | The traditional tree: which tree each person belongs in, and where everything is drawn. |
 | `public/map.js` | The map view and looking a place up by name. |
 | `public/record.js` | Name-record ordering, shared by server and page. |

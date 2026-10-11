@@ -3,9 +3,9 @@ import SpriteText from 'https://esm.sh/three-spritetext@1.10.0?deps=three@0.186.
 import * as THREE from 'https://esm.sh/three@0.186.1';
 import { createFinder, rank } from './finder.js';
 import { getLang, has, LANGS, setLang, t } from './i18n.js';
-import { isDescent, kinship, shortestPath } from './kinship.js';
+import { closeness, descendantCounts, isDescent, kinship, shortestPath } from './kinship.js';
 import { createMap, lookUp } from './map.js';
-import { fullName, nameRecord } from './record.js';
+import { fullName, nameRecord, yearOf } from './record.js';
 import { kinshipTerm } from './terms.js';
 import { buildForest, layoutForest } from './tree.js';
 
@@ -18,11 +18,16 @@ let g = { nodes: [], edges: [], rivals: [], versions: [], sources: [], log: [], 
 let byId = new Map();
 let selected = null; // { group: 'nodes' | 'edges', id }
 let onPath = new Set(); // node ids and 'e' + edge ids on the highlighted path
-let view = '3d'; // '3d' | '2d' | 'tree' | 'map'
+let view = '3d'; // '3d' | '2d' | 'atlas' | 'tree' | 'map'
 let framed = false;
 let showRivals = false;
 let relation = null; // which relative is being added: 'parent' | 'partner' | 'child' | 'sibling'
 let flyingUntil = 0; // while the camera is being moved for the user, the pan limit stands aside
+let filters = []; // tags chosen in the search box: { kind: 'family' | 'place' | 'born', value, label }
+let timeline = null; // a year, while the timeline is on
+let seen = new Map(); // what the filters make of each node: 'shown', 'faded' or 'hidden' (see sight)
+let maxSteps = 2; // the Atlas draws a line between people up to this many steps apart
+let shiftHeld = false;
 let mapView = null; // made the first time the map is opened
 let placing = null; // id of a place waiting for a click on the map
 let lookUpNext = null; // id of a place to look up once the record has reloaded
@@ -90,10 +95,14 @@ const AUTOMATIC = {
 };
 const colorOf = (group, key) => g.colors[group]?.[key] ?? AUTOMATIC[group](key);
 
-// A person wears the color of the family name they were born with, for life.
+// Whose color a node carries: everyone born with the same family name shares one, so it is kept by name.
+// Anything else (a household, a place, an event, a person with no family name) can have a color of its own.
+const colorKey = (node) => (node.kind === 'person' && node.birthFamilyName ? ['family', node.birthFamilyName] : ['node', String(node.id)]);
+
 function nodeColor(node) {
-  if (node.kind === 'person') return node.birthFamilyName ? colorOf('family', node.birthFamilyName) : ink.muted;
-  return node.kind === 'household' ? ink.muted : colorOf('kind', node.kind);
+  const [group, key] = colorKey(node);
+  if (group === 'family') return colorOf('family', key);
+  return g.colors.node?.[key] ?? (node.kind === 'place' || node.kind === 'event' ? colorOf('kind', node.kind) : ink.muted);
 }
 
 const textures = new Map();
@@ -113,25 +122,28 @@ const isLit = (link) => onPath.has('e' + link.edge) || isSelected('edges', link.
 function nodeObject(node) {
   const group = new THREE.Group();
   const lit = onPath.has(node.ref);
-  // A copy is faint: that person's full place in the tree is elsewhere.
-  const opacity = node.copy ? 0.4 : 1;
+  // Filtered out is fainter than a copy, whose full place in the tree is elsewhere.
+  const opacity = node.faded ? 0.12 : node.copy ? 0.4 : 1;
   if (node.photo) {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: photoTexture(node.ref), opacity }));
-    sprite.scale.set(14, 14, 1);
+    sprite.scale.set(14 * node.size, 14 * node.size, 1);
     group.add(sprite);
   } else {
     const material = new THREE.MeshLambertMaterial({ color: lit ? ink.highlight : node.color, transparent: true, opacity });
-    group.add(new THREE.Mesh(SHAPE[node.kind], material));
+    const shape = new THREE.Mesh(SHAPE[node.kind], material);
+    shape.scale.setScalar(node.size);
+    group.add(shape);
   }
   if (lit || isSelected('nodes', node.ref)) {
     const halo = new THREE.Mesh(HALO, new THREE.MeshBasicMaterial({ color: ink.highlight, wireframe: true, transparent: true, opacity: 0.35 }));
-    halo.scale.setScalar(node.photo ? 12 : 9);
+    halo.scale.setScalar((node.photo ? 12 : 9) * node.size);
     group.add(halo);
   }
   if (node.label) {
     // Names are in the text color so they stay readable; the shape carries the family color.
     const text = new SpriteText(node.copy ? `↗ ${node.label}` : node.label, 4, ink.text);
-    text.position.y = node.photo ? -14 : -11;
+    text.material.opacity = node.faded ? 0.25 : 1;
+    text.position.y = (node.photo ? -14 : -11) * node.size;
     group.add(text);
   }
   return group;
@@ -144,9 +156,11 @@ const Graph = new ForceGraph3D($('graph'))
   .nodeThreeObject(nodeObject)
   .linkLabel('label')
   .linkColor((l) => (isLit(l) ? ink.highlight : l.color))
-  .linkWidth((l) => (isLit(l) ? 2.5 : l.type === 'PARTNER_IN' ? 1.2 : 0.5))
+  // A closeness line is thinner the more steps apart the two people are.
+  .linkWidth((l) => (isLit(l) ? 2.5 : l.steps ? Math.max(0.15, 1.8 / l.steps) : l.type === 'PARTNER_IN' ? 1.2 : 0.5))
+  .linkVisibility(linkVisible)
   .linkOpacity(0.7)
-  .linkDirectionalArrowLength((l) => (l.type === 'PARTNER_IN' || l.elbow ? 0 : 3))
+  .linkDirectionalArrowLength((l) => (l.type === 'PARTNER_IN' || l.elbow || l.steps ? 0 : 3))
   .linkDirectionalArrowRelPos(1)
   // In the tree, a child hangs from its parents by a line with square corners, as on a printed chart.
   .linkThreeObject((l) => l.elbow && new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: isLit(l) ? ink.highlight : l.color })))
@@ -160,10 +174,11 @@ const Graph = new ForceGraph3D($('graph'))
     // A copy takes you to where that person is drawn in full.
     if (n.copy) return openNode(n.ref);
     select({ group: 'nodes', id: n.ref });
-    // Open their details, unless you are reading through people's records.
-    showTab($('tab-record').hidden ? 'people' : 'record');
+    showTab('edit');
   })
   .onLinkClick((l) => {
+    // A closeness line stands for no single link in the record.
+    if (!l.edge) return;
     select({ group: 'edges', id: l.edge });
     showTab('links');
   })
@@ -174,7 +189,9 @@ const Graph = new ForceGraph3D($('graph'))
     if (!framed) frame();
     framed = true;
   });
-Graph.d3Force('link').distance((l) => l.distance);
+// Each link pulls its ends to the distance it asks for. The Atlas's closeness lines also say how hard.
+const usualStrength = Graph.d3Force('link').strength();
+Graph.d3Force('link').distance((l) => l.distance).strength((l) => l.strength ?? usualStrength(l));
 // Cap the range of repulsion so unconnected families stay nearby instead of drifting off.
 Graph.d3Force('charge').distanceMax(120);
 
@@ -199,6 +216,25 @@ Graph.controls().addEventListener('change', () => {
   Graph.camera().position.add(back);
 });
 
+// Lines to or from someone filtered out are not drawn, nor closeness lines beyond the chosen number of steps.
+function linkVisible(link) {
+  return !link.faded && (!link.steps || link.steps <= maxSteps);
+}
+
+// Dragging turns the 3D view and moves the flat ones. In 3D, hold Shift (or use the right button) to move.
+function setMouse() {
+  const flat = view !== '3d';
+  Graph.controls().noRotate = flat;
+  Graph.controls().mouseButtons.LEFT = flat || shiftHeld ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+}
+for (const type of ['keydown', 'keyup']) {
+  window.addEventListener(type, (evt) => {
+    if (evt.key !== 'Shift') return;
+    shiftHeld = type === 'keydown';
+    setMouse();
+  });
+}
+
 // Fit every node on screen, then limit zooming to between one node and a little past that fit.
 function frame() {
   const controls = Graph.controls();
@@ -212,7 +248,7 @@ function frame() {
 }
 
 function showLegend() {
-  $('legend').textContent = t(view === 'map' ? 'legend.map' : view === 'tree' ? 'legend.tree' : 'legend');
+  $('legend').textContent = t({ '3d': 'legend', '2d': 'legend.flat' }[view] ?? 'legend.' + view);
 }
 
 function setView(next) {
@@ -222,7 +258,7 @@ function setView(next) {
   $('map').hidden = !onMap;
   $('graph').hidden = onMap;
   // Rival links are drawn only where every link is drawn.
-  $('rivals').hidden = onMap || view === 'tree';
+  $('rivals').hidden = view !== '3d' && view !== '2d';
   showLegend();
   if (onMap) {
     Graph.pauseAnimation();
@@ -234,7 +270,7 @@ function setView(next) {
   Graph.resumeAnimation();
   const flat = view !== '3d';
   Graph.numDimensions(flat ? 2 : 3);
-  Graph.controls().noRotate = flat;
+  setMouse();
   if (flat) {
     Graph.camera().up.set(0, 1, 0);
     Graph.cameraPosition({ x: 0, y: 0, z: 400 }, { x: 0, y: 0, z: 0 });
@@ -247,7 +283,7 @@ function setView(next) {
 }
 
 // How a node and a link look, whichever view draws them.
-const face = (node) => ({ ref: node.id, kind: node.kind, photo: node.photo, label: graphLabel(node), hover: label(node), color: nodeColor(node) });
+const face = (node) => ({ ref: node.id, kind: node.kind, photo: node.photo, label: graphLabel(node), hover: label(node), color: nodeColor(node), size: 1 });
 const lookOf = (edge) => ({ edge: edge.id, type: edge.type, label: linkText(edge), color: edge.accepted ? colorOf('link', edge.type) : ink.danger });
 
 // 3D and 2D: everything in the record, left to find its own place.
@@ -280,8 +316,71 @@ function treeScene() {
   };
 }
 
+// Atlas: people only, every one pulled toward every other by how close they are on the family tree,
+// so families gather into clusters. Someone with more descendants is drawn bigger.
+function atlasScene() {
+  const people = g.nodes.filter((n) => n.kind === 'person');
+  const steps = closeness(g.edges);
+  const below = descendantCounts(g.edges);
+  const links = [];
+  people.forEach((a, i) => {
+    for (const b of people.slice(i + 1)) {
+      const apart = steps(a.id, b.id);
+      if (apart === undefined) continue;
+      links.push({
+        source: a.id, target: b.id, steps: apart, elbow: false, edge: null, type: 'CLOSE',
+        label: t('atlas.steps', { count: apart }), color: apart === 1 ? ink.accent : ink.muted,
+        distance: apart * 34, strength: 0.5 / (apart * apart),
+      });
+    }
+  });
+  return {
+    nodes: people.map((p) => ({ id: p.id, copy: false, ...face(p), size: 1 + 0.45 * Math.log2(1 + (below.get(p.id) ?? 0)) })),
+    links,
+  };
+}
+
+// ---- Filters: tags and the timeline ----
+
+const PLACE_LINKS = ['BORN_IN', 'LIVED_IN', 'DIED_IN'];
+// Whether a person fits a tag. A family-name tag fits any name they have ever carried.
+const TAG_FITS = {
+  family: (person, name) => g.versions.some((v) => v.node === person.id && v.field === 'name' && v.value.family === name),
+  place: (person, place) => g.edges.some((e) => e.src === person.id && e.dst === place && PLACE_LINKS.includes(e.type)),
+  born: (person, year) => yearOf(person.born) === year,
+};
+
+// What the filters make of every node. A person is 'faded' when they do not fit, and 'hidden' when the
+// timeline is on and they have no birth date to place them by. Tags of one kind widen the match, different
+// kinds narrow it. A household, place or event follows the people joined to it.
+function sight() {
+  const result = new Map();
+  if (!filters.length && timeline === null) return result;
+  const kinds = [...new Set(filters.map((f) => f.kind))];
+  for (const person of g.nodes.filter((n) => n.kind === 'person')) {
+    const born = yearOf(person.born);
+    const last = Number.isNaN(yearOf(person.died)) ? born + 100 : yearOf(person.died);
+    const fits = kinds.every((kind) => filters.some((f) => f.kind === kind && TAG_FITS[kind](person, f.value)));
+    const alive = timeline === null || (born <= timeline && timeline <= last);
+    result.set(person.id, timeline !== null && Number.isNaN(born) ? 'hidden' : fits && alive ? 'shown' : 'faded');
+  }
+  for (const node of g.nodes.filter((n) => n.kind !== 'person')) {
+    const joined = g.edges.filter((e) => e.src === node.id || e.dst === node.id)
+      .map((e) => result.get(e.src === node.id ? e.dst : e.src)).filter(Boolean);
+    result.set(node.id, joined.includes('shown') ? 'shown' : joined.length && joined.every((s) => s === 'hidden') ? 'hidden' : 'faded');
+  }
+  return result;
+}
+
 function draw() {
-  const scene = view === 'tree' ? treeScene() : graphScene();
+  seen = sight();
+  const scene = { tree: treeScene, atlas: atlasScene }[view]?.() ?? graphScene();
+  const state = (ref) => seen.get(ref) ?? 'shown';
+  scene.nodes = scene.nodes.filter((n) => state(n.ref) !== 'hidden').map((n) => ({ ...n, faded: state(n.ref) === 'faded' }));
+  const kept = new Map(scene.nodes.map((n) => [n.id, n]));
+  scene.links = scene.links.filter((l) => kept.has(l.source) && kept.has(l.target))
+    .map((l) => ({ ...l, faded: kept.get(l.source).faded || kept.get(l.target).faded }));
+
   // Reuse the existing node objects so nodes keep their positions across reloads.
   const existing = new Map(Graph.graphData().nodes.map((n) => [n.id, n]));
   if (existing.size !== scene.nodes.length) framed = false;
@@ -303,7 +402,6 @@ function draw() {
 
 // ---- Map view ----
 
-const PLACE_LINKS = ['BORN_IN', 'LIVED_IN', 'DIED_IN'];
 const isPlaced = (place) => place.props.lat !== undefined;
 
 function drawMap() {
@@ -317,7 +415,7 @@ function drawMap() {
   const places = g.nodes.filter((n) => n.kind === 'place');
   mapView.show(places.filter(isPlaced).map((place) => ({
     id: place.id, name: place.name, lat: place.props.lat, lng: place.props.lng, color: toHex(nodeColor(place)),
-    people: g.edges.filter((e) => e.dst === place.id && PLACE_LINKS.includes(e.type))
+    people: g.edges.filter((e) => e.dst === place.id && PLACE_LINKS.includes(e.type) && (seen.get(e.src) ?? 'shown') === 'shown')
       .map((e) => ({ id: e.src, text: `${label(byId.get(e.src))} · ${edgeText(e)}` })),
   })), openNode);
 
@@ -457,7 +555,7 @@ const FINDER_KINDS = {
   search: ALL_KINDS, relExisting: ['person'], linkFrom: ALL_KINDS, linkTo: ALL_KINDS, relA: ['person'], relB: ['person'],
 };
 const FINDER_PICKED = {
-  search: (item) => item && openNode(item.id),
+  search: (item) => item && (item.tag ? addFilter(item) : openNode(item.id)),
   relExisting: (item) => ($('relNew').hidden = !!item),
 };
 
@@ -467,10 +565,68 @@ function itemOf(node) {
   return { id: node.id, label: label(node), detail: detail(node), keys: [label(node), node.props.nickname, ...names].filter(Boolean) };
 }
 
+// Tags the search box offers beside people: every family name, every place, every year someone was born.
+// Picking one filters the picture instead of opening a person.
+function tagItems() {
+  const families = new Set(g.versions.filter((v) => v.field === 'name' && v.value.family).map((v) => v.value.family));
+  const years = new Set(g.nodes.map((n) => yearOf(n.born)).filter((year) => !Number.isNaN(year)));
+  const tag = (kind, value, text, keys) => ({ id: `${kind}:${value}`, tag: { kind, value }, label: `# ${text}`, detail: t('tag.' + kind), keys });
+  return [
+    ...[...families].map((name) => tag('family', name, name, [name])),
+    ...g.nodes.filter((n) => n.kind === 'place').map((place) => tag('place', place.id, place.name, [place.name])),
+    // A year is found by either calendar: 1990 and 2533 are the same tag.
+    ...[...years].map((year) => tag('born', year, `${year} / ${year + 543}`, [String(year), String(year + 543)])),
+  ];
+}
+
+function addFilter(item) {
+  finders.search.set(null);
+  if (!filters.some((f) => f.kind === item.tag.kind && f.value === item.tag.value)) filters.push({ ...item.tag, label: item.label });
+  applyFilters();
+}
+
+function applyFilters() {
+  const chips = filters.map((filter) => button(`${filter.label} ✕`, () => {
+    filters = filters.filter((other) => other !== filter);
+    applyFilters();
+  }, 'ghost'));
+  if (timeline !== null) {
+    chips.push(button(`${t('filter.alive', { year: timeline })} ✕`, () => {
+      $('timelineOn').checked = false;
+      syncTimeline();
+      applyFilters();
+    }, 'ghost'));
+  }
+  $('chips').replaceChildren(...chips);
+  draw();
+  drawMap();
+  // Fading changes how existing nodes look, so their shapes have to be made again.
+  Graph.refresh();
+}
+
+// The timeline's slider runs from the earliest year in the record to this year.
+function syncTimeline() {
+  const years = g.nodes.flatMap((n) => [yearOf(n.born), yearOf(n.died)]).filter((year) => !Number.isNaN(year));
+  const slider = $('timelineYear');
+  $('timelineOn').disabled = !years.length;
+  if (!years.length) $('timelineOn').checked = false;
+  const on = $('timelineOn').checked;
+  if (years.length) {
+    const keep = slider.value;
+    slider.min = Math.min(...years);
+    slider.max = Math.max(...years, new Date().getFullYear());
+    slider.value = on && keep ? keep : slider.max;
+  }
+  slider.disabled = !on;
+  timeline = on ? Number(slider.value) : null;
+  $('timelineLabel').textContent = !years.length ? t('timeline.none')
+    : on ? t('timeline.year', { year: `${timeline} / ${timeline + 543}` }) : '';
+}
+
 const finders = {};
 for (const [id, kinds] of Object.entries(FINDER_KINDS)) {
   finders[id] = createFinder($(id), {
-    search: (query) => rank(query, g.nodes.filter((n) => kinds.includes(n.kind)).map(itemOf)),
+    search: (query) => rank(query, [...(id === 'search' ? tagItems() : []), ...g.nodes.filter((n) => kinds.includes(n.kind)).map(itemOf)]),
     onPick: FINDER_PICKED[id],
   });
 }
@@ -478,7 +634,7 @@ for (const [id, kinds] of Object.entries(FINDER_KINDS)) {
 function openNode(id) {
   finders.search.set(null);
   select({ group: 'nodes', id });
-  showTab('people');
+  showTab('edit');
   if (view !== 'map') lookAt(id);
   else if (isPlaced(byId.get(id))) mapView.lookAt(byId.get(id).props);
 }
@@ -545,10 +701,11 @@ function chooseRelation(next) {
   const person = byId.get(selected.id);
   finders.relExisting.set(null);
   $('relNew').hidden = false;
-  for (const id of ['relGiven', 'relFamily', 'relBorn', 'relSex']) $(id).value = '';
+  for (const id of ['relGiven', 'relFamily', 'relBorn', 'relSex', 'relMarried']) $(id).value = '';
   $('relKind').value = 'birth';
   show('relHousehold', relation === 'child');
   show('relKind', relation !== 'partner');
+  show('relMarried', relation === 'partner');
   show('relTakeName', relation === 'partner');
 
   if (relation === 'child') {
@@ -602,6 +759,7 @@ on('addRelative', async () => {
     kind: $('relKind').value,
     household: relation === 'child' ? Number($('relHousehold').value) || null : null,
     takeName: relation === 'partner' ? $('relTakeName').value : '',
+    married: relation === 'partner' ? text('relMarried') : '',
   });
   return t('toast.added');
 });
@@ -706,7 +864,6 @@ function logText({ summary }) {
 function renderRecord() {
   const node = selected?.group === 'nodes' ? byId.get(selected.id) : null;
   const person = node?.kind === 'person' ? node : null;
-  $('recordHint').hidden = !!person;
   const blocks = [];
   if (person) {
     const mine = g.versions.filter((v) => v.node === person.id && v.target === null);
@@ -744,7 +901,27 @@ function renderRecord() {
   }));
 }
 
-// Every color in use, each with a picker; ↺ returns one to its automatic color.
+// Choose a color, or pass none to go back to the automatic one. group is 'family', 'node', 'link' or 'kind'.
+function saveColor(group, key, color) {
+  const colors = structuredClone(g.colors);
+  colors[group] = { ...colors[group], [key]: color };
+  if (!color) delete colors[group][key];
+  return act(() => api('PUT', 'colors', colors), t('toast.saved'));
+}
+
+// The Edit tab's color for whatever is selected. For someone with a family name it is the family's color.
+function renderNodeColor(node) {
+  $('colorBox').hidden = !node;
+  if (!node) return;
+  const [group, key] = colorKey(node);
+  $('colorLabel').textContent = group === 'family' ? t('colors.ofFamily', { name: key }) : t('colors.ofThis');
+  $('nodeColor').value = toHex(nodeColor(node));
+  $('nodeColor').onchange = () => saveColor(group, key, $('nodeColor').value);
+  $('nodeColorReset').hidden = !g.colors[group]?.[key];
+  $('nodeColorReset').onclick = () => saveColor(group, key, null);
+}
+
+// The View tab's list of the colors shared by many things; ↺ returns one to its automatic color.
 function renderColors() {
   const families = [...new Set(g.nodes.map((n) => n.birthFamilyName).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const linkTypes = [...new Set(['PARTNER_IN', 'CHILD_OF', ...g.edges.map((e) => e.type)])];
@@ -753,21 +930,15 @@ function renderColors() {
     ['colors.links', 'link', linkTypes.map((type) => [type, edgeText({ type, props: {} })])],
     ['colors.others', 'kind', ['place', 'event'].map((kind) => [kind, t('kind.' + kind)])],
   ];
-  const save = (group, key, color) => {
-    const colors = structuredClone(g.colors);
-    colors[group] = { ...colors[group], [key]: color };
-    if (!color) delete colors[group][key];
-    return act(() => api('PUT', 'colors', colors), t('toast.saved'));
-  };
   $('colorRows').replaceChildren(...groups.map(([title, group, rows]) => {
     const list = el('ul', { className: 'rows' });
     list.append(...rows.map(([key, text]) => {
       const picker = el('input', { type: 'color', value: toHex(colorOf(group, key)), title: text });
-      picker.onchange = () => save(group, key, picker.value);
+      picker.onchange = () => saveColor(group, key, picker.value);
       const row = el('li');
       row.append(picker, el('span', { textContent: text }));
       if (g.colors[group]?.[key]) {
-        const reset = button('↺', () => save(group, key, null), 'ghost');
+        const reset = button('↺', () => saveColor(group, key, null), 'ghost');
         reset.title = t('colors.reset');
         row.append(reset);
       }
@@ -807,6 +978,12 @@ function select(next) {
   const edge = selected?.group === 'edges' ? findLink(selected.id) : null;
   const person = node?.kind === 'person' ? node : null;
   const place = node?.kind === 'place' ? node : null;
+
+  // The details form sits in the Add tab until something is selected, then in the Edit tab.
+  $(node ? 'editSlot' : 'addSlot').append($('nodeBox'));
+  $('editHint').hidden = !!node;
+  if (node && !$('tab-add').hidden) showTab('edit');
+  renderNodeColor(node);
 
   $('whereBox').hidden = !place;
   $('whereChoices').replaceChildren();
@@ -870,8 +1047,10 @@ async function refresh() {
   g = { ...data, edges: links.filter((l) => l.accepted), rivals: links.filter((l) => !l.accepted), log };
   byId = new Map(g.nodes.map((n) => [n.id, n]));
   const stillThere = selected && (selected.group === 'nodes' ? byId.has(selected.id) : findLink(selected.id));
-  draw();
-  drawMap();
+  // A tag for a place that has since been removed no longer means anything.
+  filters = filters.filter((f) => f.kind !== 'place' || byId.has(f.value));
+  syncTimeline();
+  applyFilters();
   $('people').replaceChildren(...g.nodes.filter((n) => n.kind === 'person' && n.name).map((n) => new Option(n.name)));
   // Anything chosen in a finder may have been renamed or removed.
   for (const finder of Object.values(finders)) finder.set(byId.has(finder.value) ? itemOf(byId.get(finder.value)) : null);
@@ -1001,6 +1180,15 @@ $('newLink').onclick = () => select(null);
 $('kind').onchange = syncKindFields;
 $('linkKind').onchange = syncLinkFields;
 $('relHousehold').onchange = suggestFamilyName;
+$('timelineOn').onchange = $('timelineYear').oninput = () => {
+  syncTimeline();
+  applyFilters();
+};
+$('closeSteps').oninput = () => {
+  maxSteps = Number($('closeSteps').value);
+  $('closeLabel').textContent = t('atlas.upTo', { count: maxSteps });
+  Graph.linkVisibility(linkVisible);
+};
 $('lookUpPlace').onclick = () => findPlace(byId.get(selected.id));
 $('placeByHand').onclick = () => placeByHand(selected.id);
 for (const b of document.querySelectorAll('[data-relation]')) {
@@ -1061,7 +1249,12 @@ $('relate').onclick = () => {
 
 // Clicking the open tab again folds the panel away, as the ☰ button does.
 for (const b of document.querySelectorAll('#tabs button')) {
-  b.onclick = () => (b.classList.contains('active') ? togglePanel() : showTab(b.dataset.tab));
+  b.onclick = () => {
+    if (b.classList.contains('active')) return togglePanel();
+    // Going to Add means starting something new, so let go of what was selected.
+    if (b.dataset.tab === 'add' && selected) select(null);
+    showTab(b.dataset.tab);
+  };
 }
 function togglePanel() {
   document.body.classList.toggle('collapsed');
@@ -1095,9 +1288,10 @@ function relabel(lang) {
   for (const [id, finder] of Object.entries(finders)) finder.input.placeholder = t(id === 'relExisting' ? 'rel.existingHint' : 'bar.search');
   fillChoices();
   $('result').textContent = '';
+  $('closeLabel').textContent = t('atlas.upTo', { count: maxSteps });
   showLegend();
-  draw();
-  drawMap();
+  syncTimeline();
+  applyFilters();
   select(selected);
 }
 
@@ -1108,5 +1302,6 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+setMouse();
 relabel(prefs.get('lang') ?? (navigator.language.startsWith('th') ? 'th' : 'en'));
 refresh().catch((err) => notify(err.message, true));
