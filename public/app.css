@@ -1,4 +1,4 @@
-/* Two themes, light and dark. The device's setting picks one unless the switch has set data-theme. */
+/* Two themes, light and dark. Light unless the switch has set data-theme to dark. */
 :root {
   color-scheme: light;
   --page: #f4f5f7;
@@ -35,26 +35,6 @@
   --highlight: #ffffff;
   --place: #7fd6a0;
   --event: #f0c060;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --page: #22262e;
-    --panel: #2a2f39;
-    --field: #363c48;
-    --raised: #363c48;
-    --border: #4d5566;
-    --text: #f0f2f6;
-    --muted: #a9b1c0;
-    --accent: #8fb0ff;
-    --on-accent: #10131a;
-    --danger: #ff8a80;
-    --ok: #62d6a4;
-    --stage: #2e333e;
-    --highlight: #ffffff;
-    --place: #7fd6a0;
-    --event: #f0c060;
-  }
 }
 
 [hidden] { display: none !important; }

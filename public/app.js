@@ -41,8 +41,7 @@ const prefs = {
 
 // ---- Theme ----
 
-const systemDark = matchMedia('(prefers-color-scheme: dark)');
-const isDark = () => (document.documentElement.dataset.theme ?? (systemDark.matches ? 'dark' : 'light')) === 'dark';
+const isDark = () => document.documentElement.dataset.theme === 'dark';
 
 // The picture is drawn by WebGL, so it needs the theme's colors as values, not as CSS.
 const ink = {};
@@ -52,7 +51,7 @@ function readTheme() {
     ink[name] = style.getPropertyValue('--' + name).trim();
   }
 }
-if (prefs.get('theme')) document.documentElement.dataset.theme = prefs.get('theme');
+document.documentElement.dataset.theme = prefs.get('theme') ?? 'light';
 readTheme();
 
 function applyTheme() {
@@ -1301,7 +1300,6 @@ $('themeSwitch').onclick = () => {
   prefs.set('theme', next);
   applyTheme();
 };
-systemDark.onchange = applyTheme;
 
 // Put every text into the chosen language, including the ones built from the record.
 function relabel(lang) {
@@ -1328,5 +1326,5 @@ window.addEventListener('resize', resize);
 resize();
 
 setMouse();
-relabel(prefs.get('lang') ?? (navigator.language.startsWith('th') ? 'th' : 'en'));
+relabel(prefs.get('lang') ?? 'th');
 refresh().catch((err) => notify(err.message, true));

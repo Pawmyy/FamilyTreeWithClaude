@@ -85,8 +85,8 @@ The panel folds away with the ☰ button, or by clicking the open tab again.
 
 ## Languages and themes
 
-The interface is in English and Thai, following the browser's language until you switch. All text lives in `public/i18n.js`;
-adding a language is adding one more block there. Light and dark themes follow the device's setting until you switch.
+The interface is in English and Thai, starting in Thai until you switch. All text lives in `public/i18n.js`;
+adding a language is adding one more block there. It starts in the light theme until you switch to dark.
 Both choices are remembered in the browser.
 
 ## Files
