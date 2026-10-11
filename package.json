@@ -1,11 +1,84 @@
 {
   "name": "family-graph",
+  "version": "0.1.0",
+  "description": "A family tree kept on your own computer.",
   "private": true,
   "type": "module",
+  "author": "Pawmyy <Pawmyy@users.noreply.github.com>",
+  "homepage": "https://github.com/Pawmyy/FamilyTreeWithClaude",
+  "main": "desktop/main.js",
   "scripts": {
     "start": "node --watch server.js",
     "seed": "node seed.js",
     "examples": "node examples.js && DB=examples.db PORT=3001 node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build": "node web/build.js",
+    "desktop": "node web/build.js desktop && electron .",
+    "installer": "node web/build.js desktop && electron-builder --publish never"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
+    "3d-force-graph": "^1.80.1",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "leaflet": "^1.9.4",
+    "three": "^0.186.1",
+    "three-spritetext": "^1.10.0"
+  },
+  "allowScripts": {
+    "electron@38.8.6": true,
+    "esbuild@0.28.2": true
+  },
+  "build": {
+    "appId": "io.github.pawmyy.familygraph",
+    "productName": "Family Graph",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "package.json",
+      "server.js",
+      "public/record.js",
+      "desktop/**",
+      "dist/desktop/**"
+    ],
+    "artifactName": "Family-Graph-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.reference",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Family Graph"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Education",
+      "maintainer": "Pawmyy <Pawmyy@users.noreply.github.com>"
+    }
   }
 }

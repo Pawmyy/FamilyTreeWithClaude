@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { fullName, nameRecord } from './public/record.js';
 
 const PUBLIC = fileURLToPath(new URL('./public/', import.meta.url));
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png' };
 
 // The record (see README and docs/adr/0003):
 //   nodes     people, households, places, events. Single-valued details live in props.
@@ -437,10 +437,10 @@ function send(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-async function serveStatic(pathname, res) {
-  const file = join(PUBLIC, pathname === '/' ? 'index.html' : pathname);
+async function serveStatic(root, pathname, res) {
+  const file = join(root, pathname === '/' ? 'index.html' : pathname);
   try {
-    if (!file.startsWith(PUBLIC)) throw new Error('outside public/');
+    if (!file.startsWith(root)) throw new Error('outside the page folder');
     const data = await readFile(file);
     res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
     res.end(data);
@@ -449,11 +449,13 @@ async function serveStatic(pathname, res) {
   }
 }
 
-export function createApp(db) {
+// `pageDir` is the folder the page is served from: public/ as written, or a built copy of it.
+export function createApp(db, pageDir = PUBLIC) {
+  const root = join(pageDir, '/');
   return createServer(async (req, res) => {
     const { pathname } = new URL(req.url, 'http://localhost');
     const [, api, collection, rawId, action] = pathname.split('/');
-    if (api !== 'api') return serveStatic(pathname, res);
+    if (api !== 'api') return serveStatic(root, pathname, res);
     const id = Number(rawId);
     try {
       const route = [req.method, collection, action].filter(Boolean).join(' ');

@@ -83,9 +83,36 @@ The panel folds away with the ☰ button, or by clicking the open tab again.
 - **Related**: how two people are related.
 - **View**: the timeline, whether closeness lines are drawn and for how many steps apart, the colors shared by many things, the list of sources, and the edit log, where removals can be undone.
 
+## As an app
+
+The same page is packaged as an app to install. Pushing a tag such as `v0.1.0` runs
+`.github/workflows/release.yml`, which builds every installer and attaches it to a GitHub release.
+
+| For | What you get | Where the record is kept |
+| --- | --- | --- |
+| Windows | A setup wizard (`.exe`) that asks where to install and adds shortcuts | `family.db` in the app's data folder |
+| macOS | A disk image (`.dmg`) for Apple silicon and for Intel: drag the app to Applications | the same |
+| Linux and other Unix desktops | An `.AppImage` that runs as it is, and a `.deb` package | the same |
+| Android | An `.apk` to install from the file | on the phone, in the app's own storage |
+| iPhone and iPad | The page itself, added to the Home Screen from Safari once it is hosted (see below) | on the device, in Safari's storage for the page |
+
+The desktop app (`desktop/main.js`) is `server.js` and the page in a window of their own: `npm run desktop` tries
+it, `npm run installer` builds the installer for the computer you are on into `release/`. The phone app is the
+page built for phones (`node web/build.js mobile`), which keeps the record on the device through
+`web/backend.local.js`, inside an Android shell made by Capacitor.
+
+None of the installers is signed with a paid developer certificate, so each system warns before the first
+run: on Windows choose "More info" then "Run anyway"; on macOS right-click the app and choose Open, or allow
+it under System Settings > Privacy & Security; on Android allow installing from the file. Apple does not let
+an app be installed on an iPhone from a file at all, which is why the iPhone gets the page instead: host the
+contents of `Family-Graph-web.zip` (or `dist/mobile/`) on any https address, open it in Safari and choose
+Share > Add to Home Screen. It then opens full-screen and works without the internet.
+
+A record kept on a phone lives only on that phone: there is no copy elsewhere unless you make one.
+
 ## As a claude.ai artifact
 
-`node web/build.js` builds the same page into `dist/artifact/` for publishing as a claude.ai artifact. There is
+`node web/build.js artifact` builds the same page into `dist/artifact/` for publishing as a claude.ai artifact. There is
 no server there, so `web/store.js` does in the browser what `server.js` does with SQLite, and
 `web/backend.artifact.js` keeps its rows in the artifact's shared database: everyone the artifact is shared
 with as a contributor edits the same family, and sees each other's changes as they happen. `test/store.test.js`

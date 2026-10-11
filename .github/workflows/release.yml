@@ -1,0 +1,86 @@
+# Builds the installers and attaches them to a GitHub release.
+# Runs when a tag like v0.1.0 is pushed, or by hand from the Actions tab (then nothing is released,
+# and the installers are kept with the run for a few days).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run installer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+            release/*.deb
+
+  # The phone app is the page built for phones inside an Android shell. It is signed with a debug key,
+  # which is enough to install it from the file; a store would want a key of its own.
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: node web/build.js mobile
+      - run: npx cap add android
+      - name: Use the app's own icon
+        continue-on-error: true
+        run: |
+          mkdir -p assets && cp build/icon.png assets/icon.png
+          npx --yes @capacitor/assets generate --android --iconBackgroundColor '#2748c9' --iconBackgroundColorDark '#2748c9'
+      - run: npx cap sync android
+      - run: ./gradlew assembleDebug
+        working-directory: android
+      - run: |
+          mkdir -p release
+          cp android/app/build/outputs/apk/debug/app-debug.apk "release/Family-Graph-${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}-android.apk"
+          (cd dist/mobile && zip -qr "../../release/Family-Graph-web.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile
+          if-no-files-found: error
+          path: release/*
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: found
+          merge-multiple: true
+      - run: gh release create "${{ github.ref_name }}" found/* --repo "${{ github.repository }}" --title "Family Graph ${{ github.ref_name }}" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
