@@ -18,8 +18,9 @@ export const db = {
   async query(pk, { prefix = '', cursor } = {}) {
     const page = await doc.send(new QueryCommand({
       TableName: TABLE, ConsistentRead: true,
-      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
-      ExpressionAttributeValues: { ':pk': pk, ':prefix': prefix },
+      // The table will not be asked for keys beginning with nothing; no prefix means every item of the pk.
+      KeyConditionExpression: prefix ? 'pk = :pk AND begins_with(sk, :prefix)' : 'pk = :pk',
+      ExpressionAttributeValues: prefix ? { ':pk': pk, ':prefix': prefix } : { ':pk': pk },
       ExclusiveStartKey: cursor && JSON.parse(Buffer.from(cursor, 'base64url').toString()),
     }));
     return { items: page.Items, next: page.LastEvaluatedKey && Buffer.from(JSON.stringify(page.LastEvaluatedKey)).toString('base64url') };
