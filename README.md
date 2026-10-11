@@ -79,7 +79,7 @@ The panel folds away with the ☰ button, or by clicking the open tab again.
 
 - **Add**: a new person, place or event.
 - **Edit**: opens whenever you select something. A person's details, adding a relative (a parent, partner, child or sibling; the household in between is made for you, a child is offered the parents' family name, and a partner can take the other's family name and record the date they married), their color, and their name record with the versions of each fact. For a place, where it is on the map.
-- **Links**: add, change or remove a link, or save a rival version of one.
+- **Links**: add, change or remove a link, or save a rival version of one. A new link starts from whatever is selected.
 - **Related**: how two people are related.
 - **View**: the timeline, whether closeness lines are drawn and for how many steps apart, the colors shared by many things, the list of sources, and the edit log, where removals can be undone.
 

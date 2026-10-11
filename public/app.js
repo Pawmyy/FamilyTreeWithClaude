@@ -34,6 +34,7 @@ let shiftHeld = false;
 let mapView = null; // made the first time the map is opened
 let placing = null; // id of a place waiting for a click on the map
 let lookUpNext = null; // id of a place to look up once the record has reloaded
+let linkFromOf = null; // id of the selected node the new link's From was last filled with
 
 // Remembered between visits; private browsing may refuse, which is fine.
 const prefs = {
@@ -1072,6 +1073,12 @@ function select(next) {
     $('linkKind').value = LINK_KINDS.includes(kind) ? kind : 'OTHER';
     $('linkType').value = $('linkKind').value === 'OTHER' ? edge.type.toLowerCase().replaceAll('_', ' ') : '';
   }
+  // A new link most often starts from whatever is selected. Filled once per selection, so it can be changed.
+  if (node && linkFromOf !== node.id) {
+    finders.linkFrom.set(itemOf(node));
+    finders.linkTo.set(null);
+  }
+  linkFromOf = node?.id ?? null;
   syncLinkFields();
   renderLinkList();
   renderRecord();
