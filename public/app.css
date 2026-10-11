@@ -140,9 +140,16 @@ input[type="color"] { width: 48px; flex: none; padding: 2px; cursor: pointer; }
 #bar > * { pointer-events: auto; }
 #bar button { width: auto; white-space: nowrap; }
 #bar .spacer { flex: 1; }
+/* The language dropdown: a pill with a globe on the left and a chevron on the right, both drawn here. */
+.lang { position: relative; flex: none; color: var(--text); }
+.lang svg { position: absolute; left: 12px; top: 50%; width: 18px; height: 18px; translate: 0 -50%; fill: none; stroke: var(--accent); stroke-width: 1.6; pointer-events: none; }
+.lang::after { content: ""; position: absolute; right: 14px; top: 50%; width: 7px; height: 7px; border: solid var(--muted); border-width: 0 2px 2px 0; translate: 0 -70%; rotate: 45deg; pointer-events: none; transition: border-color 0.15s, translate 0.15s; }
+.lang select { appearance: none; -webkit-appearance: none; width: auto; padding: 8px 34px 8px 38px; border-radius: 20px; background: var(--raised); font-weight: 600; cursor: pointer; box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); transition: border-color 0.15s, box-shadow 0.15s; }
+.lang:hover select { border-color: var(--accent); box-shadow: 0 2px 8px rgb(0 0 0 / 0.18); }
+.lang:hover::after, .lang:focus-within::after { border-color: var(--accent); translate: 0 -50%; }
 #search { width: 280px; }
 #search input { border-radius: 20px; padding-left: 16px; }
-#views { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--raised); }
+#views { flex: none; display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--raised); }
 #views button { background: none; color: var(--text); border-radius: 0; }
 #views button.active { background: var(--accent); color: var(--on-accent); }
 #legend { position: absolute; left: 14px; bottom: 12px; color: var(--muted); font-size: 13px; white-space: pre-wrap; }

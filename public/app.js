@@ -1301,13 +1301,15 @@ $('themeSwitch').onclick = () => {
   applyTheme();
 };
 
+// Each language is listed under its own name, so it can be found whatever the page is in.
+$('langSwitch').replaceChildren(...Object.entries(LANGS).map(([code, name]) => new Option(name, code)));
+$('langSwitch').onchange = () => relabel($('langSwitch').value);
+
 // Put every text into the chosen language, including the ones built from the record.
 function relabel(lang) {
   setLang(lang);
   prefs.set('lang', lang);
-  const other = Object.keys(LANGS).find((code) => code !== getLang());
-  $('langSwitch').textContent = LANGS[other];
-  $('langSwitch').onclick = () => relabel(other);
+  $('langSwitch').value = getLang();
   for (const [id, finder] of Object.entries(finders)) finder.input.placeholder = t(id === 'relExisting' ? 'rel.existingHint' : 'bar.search');
   fillChoices();
   $('result').textContent = '';
