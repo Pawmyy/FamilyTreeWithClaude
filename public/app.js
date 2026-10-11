@@ -184,7 +184,7 @@ const Graph = new ForceGraph3D($('graph'))
   .linkLabel('label')
   .linkColor((l) => (isLit(l) ? ink.highlight : l.color))
   // A closeness line is thinner the more steps apart the two people are.
-  .linkWidth((l) => (isLit(l) ? 2.5 : l.steps ? Math.max(0.6, 2.4 - 0.3 * (l.steps - 2)) : l.type === 'PARTNER_IN' ? 1.2 : 0.5))
+  .linkWidth((l) => (isLit(l) ? 2.5 : l.steps ? 2.4 * 0.75 ** (l.steps - 2) : l.type === 'PARTNER_IN' ? 1.2 : 0.5))
   .linkVisibility(linkVisible)
   // A rival link bends away from the accepted one, which may join the same two things.
   .linkCurvature((l) => l.curve ?? 0)
@@ -320,8 +320,9 @@ const lookOf = (edge) => ({ edge: edge.id, type: edge.type, label: linkText(edge
 // steps apart they are, so near relatives settle together and distant ones apart. One step apart
 // (parent and child, partners) is already drawn through their household, so lines start at two steps.
 // The color of a closeness line: warm for the nearest relatives, through to cool for the furthest drawn.
-const MAX_STEPS = 8;
-const closeColor = (steps) => hue(10 + (240 * (Math.min(steps, MAX_STEPS) - 2)) / (MAX_STEPS - 2));
+// Hues chosen by eye to stay apart from each other: red, orange, yellow, green, teal, blue, purple.
+const CLOSE_HUES = [0, 28, 52, 125, 180, 220, 280];
+const closeColor = (steps) => hue(CLOSE_HUES[Math.min(steps - 2, CLOSE_HUES.length - 1)]);
 
 // The key under the slider: one swatch for each number of steps being drawn.
 function renderCloseKey() {
