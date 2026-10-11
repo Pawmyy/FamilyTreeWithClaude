@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Graph</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<!-- All visible text comes from i18n.js: data-i18n fills an element, -placeholder and -title its attributes. -->
+<aside id="side">
+  <nav id="tabs">
+    <button data-tab="people" data-i18n="tab.people" class="active"></button>
+    <button data-tab="links" data-i18n="tab.links"></button>
+    <button data-tab="related" data-i18n="tab.related"></button>
+    <button data-tab="record" data-i18n="tab.record"></button>
+    <button data-tab="colors" data-i18n="tab.colors"></button>
+  </nav>
+
+  <section id="tab-people">
+    <div id="card" hidden>
+      <img id="cardPhoto" alt="">
+      <div>
+        <strong id="cardName"></strong>
+        <span id="cardDetail"></span>
+      </div>
+    </div>
+
+    <fieldset id="relatives" hidden>
+      <legend id="relativesLegend"></legend>
+      <div class="choices">
+        <button data-relation="parent" data-i18n="rel.parent" class="ghost"></button>
+        <button data-relation="partner" data-i18n="rel.partner" class="ghost"></button>
+        <button data-relation="child" data-i18n="rel.child" class="ghost"></button>
+        <button data-relation="sibling" data-i18n="rel.sibling" class="ghost"></button>
+      </div>
+      <div id="relativeForm" class="form" hidden>
+        <label><span data-i18n="rel.existing"></span><div class="finder" id="relExisting"></div></label>
+        <div id="relNew" class="form">
+          <label><span data-i18n="field.given"></span><input id="relGiven"></label>
+          <label><span data-i18n="field.family"></span><input id="relFamily" list="relFamilies"></label>
+          <datalist id="relFamilies"></datalist>
+          <label><span data-i18n="field.sex"></span><select id="relSex"></select></label>
+          <label><span data-i18n="field.born"></span><input id="relBorn" data-i18n-placeholder="field.dateHint"></label>
+        </div>
+        <label><span data-i18n="rel.otherParent"></span><select id="relHousehold"></select></label>
+        <label><span data-i18n="rel.kind"></span><select id="relKind"></select></label>
+        <label><span data-i18n="rel.nameAfter"></span><select id="relTakeName"></select></label>
+        <button id="addRelative"></button>
+      </div>
+    </fieldset>
+
+    <fieldset id="whereBox" hidden>
+      <legend data-i18n="map.where"></legend>
+      <p class="hint" id="whereStatus"></p>
+      <ul id="whereChoices" class="rows"></ul>
+      <button id="lookUpPlace" data-i18n="map.lookUp" class="ghost"></button>
+      <button id="placeByHand" data-i18n="map.byHand" class="ghost"></button>
+    </fieldset>
+
+    <fieldset>
+      <legend id="nodeLegend"></legend>
+      <label><span data-i18n="field.kind"></span><select id="kind"></select></label>
+      <label><span data-i18n="field.name"></span><input id="name"></label>
+      <label><span data-i18n="field.given"></span><input id="given"></label>
+      <label><span data-i18n="field.family"></span><input id="family"></label>
+      <label><span data-i18n="field.nickname"></span><input id="nickname"></label>
+      <label><span data-i18n="field.sex"></span><select id="sex"></select></label>
+      <label><span id="startLabel"></span><input id="start" data-i18n-placeholder="field.dateHint"></label>
+      <label><span id="endLabel"></span><input id="end"></label>
+      <label><span data-i18n="field.notes"></span><textarea id="notes" rows="2"></textarea></label>
+      <img id="photo" alt="" hidden>
+      <label><span data-i18n="field.photo"></span><input type="file" id="photoFile" accept="image/*"></label>
+      <button id="add" data-i18n="people.add"></button>
+      <button id="save" data-i18n="people.save" hidden></button>
+      <button id="newNode" data-i18n="people.close" class="ghost" hidden></button>
+      <button id="del" data-i18n="people.remove" class="danger" hidden></button>
+    </fieldset>
+    <p class="hint" data-i18n="people.hint"></p>
+  </section>
+
+  <section id="tab-links" hidden>
+    <fieldset>
+      <legend id="linkLegend"></legend>
+      <label><span data-i18n="links.from"></span><div class="finder" id="linkFrom"></div></label>
+      <label><span data-i18n="links.what"></span><select id="linkKind"></select></label>
+      <label><span data-i18n="links.type"></span><input id="linkType" data-i18n-placeholder="links.typeHint"></label>
+      <label><span data-i18n="links.to"></span><div class="finder" id="linkTo"></div></label>
+      <label><span data-i18n="links.by"></span><input id="linkBy" list="people" data-i18n-placeholder="links.byHint"></label>
+      <button id="addLink" data-i18n="links.add"></button>
+      <button id="saveLink" data-i18n="links.save" hidden></button>
+      <button id="rivalLink" data-i18n="links.rival" class="ghost" hidden></button>
+      <button id="newLink" data-i18n="links.cancel" class="ghost" hidden></button>
+      <button id="delLink" data-i18n="links.remove" class="danger" hidden></button>
+    </fieldset>
+
+    <fieldset id="linkVersionsBox" hidden>
+      <legend data-i18n="links.versions"></legend>
+      <ul id="linkVersions" class="rows"></ul>
+    </fieldset>
+
+    <fieldset>
+      <legend id="linkListLegend"></legend>
+      <ul id="linkList" class="rows"></ul>
+    </fieldset>
+  </section>
+
+  <section id="tab-related" hidden>
+    <fieldset>
+      <legend data-i18n="related.title"></legend>
+      <label><span data-i18n="related.a"></span><div class="finder" id="relA"></div></label>
+      <label><span data-i18n="related.b"></span><div class="finder" id="relB"></div></label>
+      <button id="relate" data-i18n="related.show"></button>
+      <p id="result"></p>
+    </fieldset>
+  </section>
+
+  <section id="tab-record" hidden>
+    <p class="hint" id="recordHint" data-i18n="record.hint"></p>
+    <div id="recordFacts"></div>
+
+    <details>
+      <summary data-i18n="record.sources"></summary>
+      <ul id="sourceList" class="rows"></ul>
+      <div class="draft">
+        <select id="sourceKind"></select>
+        <input id="sourceTitle" data-i18n-placeholder="record.sourceTitle">
+        <input id="sourceNote" data-i18n-placeholder="record.sourceNote">
+        <button id="addSource" data-i18n="record.addSource"></button>
+      </div>
+    </details>
+
+    <details>
+      <summary data-i18n="record.log"></summary>
+      <ul id="logList" class="rows"></ul>
+    </details>
+  </section>
+  <section id="tab-colors" hidden>
+    <div id="colorRows"></div>
+  </section>
+  <datalist id="people"></datalist>
+</aside>
+
+<main id="stage">
+  <div id="graph"></div>
+  <div id="map" hidden></div>
+  <header id="bar">
+    <button id="togglePanel" class="ghost" data-i18n-title="bar.panel">☰</button>
+    <div class="finder" id="search"></div>
+    <span class="spacer"></span>
+    <div id="views">
+      <button data-view="3d" data-i18n="view.3d" class="active"></button>
+      <button data-view="2d" data-i18n="view.2d"></button>
+      <button data-view="tree" data-i18n="view.tree"></button>
+      <button data-view="map" data-i18n="view.map"></button>
+    </div>
+    <button id="rivals" class="ghost" data-i18n="bar.disputed" data-i18n-title="bar.disputedHint"></button>
+    <button id="fit" class="ghost" data-i18n="bar.fit" data-i18n-title="bar.fitHint"></button>
+    <button id="langSwitch" class="ghost"></button>
+    <button id="themeSwitch" class="ghost" data-i18n-title="bar.theme">◐</button>
+  </header>
+  <div id="unplaced" hidden></div>
+  <div id="legend"></div>
+  <div id="toast" role="status" hidden></div>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

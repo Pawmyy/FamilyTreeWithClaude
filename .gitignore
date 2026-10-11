@@ -1,0 +1,6 @@
+# The record itself is personal data and stays out of version control.
+*.db
+*.db-journal
+*.bak
+node_modules/
+.DS_Store
