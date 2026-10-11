@@ -66,7 +66,7 @@ A family name, a place or a year of birth, chosen in the search box to show only
 _Avoid_: Filter, label, category
 
 **Timeline**:
-A chosen year. People not alive in it fade; people with no birth date are hidden, since the record cannot place them.
+A chosen span of years, which may be a single year. People not alive at any time in it fade; people with no birth date are hidden, since the record cannot place them.
 
 ### The tree
 

@@ -24,9 +24,9 @@ let showRivals = false;
 let relation = null; // which relative is being added: 'parent' | 'partner' | 'child' | 'sibling'
 let flyingUntil = 0; // while the camera is being moved for the user, the pan limit stands aside
 let filters = []; // tags chosen in the search box: { kind: 'family' | 'place' | 'born', value, label }
-let timeline = null; // a year, while the timeline is on
+let timeline = null; // { from, to } in years, while the timeline is on
 let seen = new Map(); // what the filters make of each node: 'shown', 'faded' or 'hidden' (see sight)
-let maxSteps = 2; // 3D and 2D draw a closeness line between people up to this many steps apart
+let closeOn = false; // whether 3D and 2D also place people by their closeness
 let shiftHeld = false;
 let mapView = null; // made the first time the map is opened
 let placing = null; // id of a place waiting for a click on the map
@@ -156,8 +156,7 @@ const Graph = new ForceGraph3D($('graph'))
   .nodeThreeObject(nodeObject)
   .linkLabel('label')
   .linkColor((l) => (isLit(l) ? ink.highlight : l.color))
-  // A closeness line is thinner the more steps apart the two people are.
-  .linkWidth((l) => (isLit(l) ? 2.5 : l.steps ? Math.max(0.15, 1.8 / l.steps) : l.type === 'PARTNER_IN' ? 1.2 : 0.5))
+  .linkWidth((l) => (isLit(l) ? 2.5 : l.type === 'PARTNER_IN' ? 1.2 : 0.5))
   .linkVisibility(linkVisible)
   .linkOpacity(0.7)
   .linkDirectionalArrowLength((l) => (l.type === 'PARTNER_IN' || l.elbow || l.steps ? 0 : 3))
@@ -216,9 +215,10 @@ Graph.controls().addEventListener('change', () => {
   Graph.camera().position.add(back);
 });
 
-// Lines to or from someone filtered out are not drawn, nor closeness lines beyond the chosen number of steps.
+// Lines to or from someone filtered out are not drawn. Nor are closeness lines: they only pull, so the
+// picture shows the links themselves, as the tree does.
 function linkVisible(link) {
-  return !link.faded && (!link.steps || (link.steps > 1 && link.steps <= maxSteps));
+  return !link.faded && !link.steps;
 }
 
 // Dragging turns the 3D view and moves the flat ones. In 3D, hold Shift (or use the right button) to move.
@@ -259,6 +259,8 @@ function setView(next) {
   $('graph').hidden = onMap;
   // Rival links are drawn only where every link is drawn.
   $('rivals').hidden = view !== '3d' && view !== '2d';
+  // Closeness places people only where they find their own place.
+  $('close').hidden = $('rivals').hidden;
   showLegend();
   if (onMap) {
     Graph.pauseAnimation();
@@ -287,8 +289,7 @@ const face = (node) => ({ ref: node.id, kind: node.kind, photo: node.photo, labe
 const lookOf = (edge) => ({ edge: edge.id, type: edge.type, label: linkText(edge), color: edge.accepted ? colorOf('link', edge.type) : ink.danger });
 
 // Closeness: every two people on the same family tree pull gently toward each other, harder the fewer
-// steps apart they are, so near relatives settle together and distant ones apart. One step apart
-// (parent and child, partners) is already drawn through their household, so lines start at two steps.
+// steps apart they are, so near relatives settle together and distant ones apart. The pull is not drawn.
 function closenessLinks() {
   const people = g.nodes.filter((n) => n.kind === 'person');
   const steps = closeness(g.edges);
@@ -318,7 +319,7 @@ function graphScene() {
         const distance = DISTANCE[e.type === 'CHILD_OF' ? e.props.kind ?? 'birth' : e.type] ?? DISTANCE.other;
         return { source, target, elbow: false, distance, ...lookOf(e) };
       }),
-      ...closenessLinks(),
+      ...(closeOn ? closenessLinks() : []),
     ],
   };
 }
@@ -361,7 +362,7 @@ function sight() {
     const born = yearOf(person.born);
     const last = Number.isNaN(yearOf(person.died)) ? born + 100 : yearOf(person.died);
     const fits = kinds.every((kind) => filters.some((f) => f.kind === kind && TAG_FITS[kind](person, f.value)));
-    const alive = timeline === null || (born <= timeline && timeline <= last);
+    const alive = timeline === null || (born <= timeline.to && timeline.from <= last);
     result.set(person.id, timeline !== null && Number.isNaN(born) ? 'hidden' : fits && alive ? 'shown' : 'faded');
   }
   for (const node of g.nodes.filter((n) => n.kind !== 'person')) {
@@ -591,7 +592,7 @@ function applyFilters() {
     applyFilters();
   }, 'ghost'));
   if (timeline !== null) {
-    chips.push(button(`${t('filter.alive', { year: timeline })} ✕`, () => {
+    chips.push(button(`${t('filter.alive', { year: span(timeline) })} ✕`, () => {
       $('timelineOn').checked = false;
       syncTimeline();
       applyFilters();
@@ -604,23 +605,36 @@ function applyFilters() {
   Graph.refresh();
 }
 
-// The timeline's slider runs from the earliest year in the record to this year.
+// A span of years as text, counted from `era` (543 for the Buddhist era).
+const span = ({ from, to }, era = 0) => (from === to ? `${from + era}` : `${from + era}–${to + era}`);
+
+// The timeline's slider runs from the earliest year in the record to this year, with one end of the
+// chosen span on each handle.
 function syncTimeline() {
   const years = g.nodes.flatMap((n) => [yearOf(n.born), yearOf(n.died)]).filter((year) => !Number.isNaN(year));
-  const slider = $('timelineYear');
+  const [from, to] = [$('timelineFrom'), $('timelineTo')];
   $('timelineOn').disabled = !years.length;
   if (!years.length) $('timelineOn').checked = false;
   const on = $('timelineOn').checked;
   if (years.length) {
-    const keep = slider.value;
-    slider.min = Math.min(...years);
-    slider.max = Math.max(...years, new Date().getFullYear());
-    slider.value = on && keep ? keep : slider.max;
+    const keep = [from.value, to.value];
+    for (const slider of [from, to]) {
+      slider.min = Math.min(...years);
+      slider.max = Math.max(...years, new Date().getFullYear());
+    }
+    [from.value, to.value] = on && from.dataset.set ? keep : [from.min, to.max];
+    from.dataset.set = on ? 'yes' : '';
+    // Where each handle sits along the track, for the bar drawn between them.
+    const along = (slider) => (slider.value - slider.min) / (slider.max - slider.min || 1);
+    $('timelineSpan').style.setProperty('--from', along(from));
+    $('timelineSpan').style.setProperty('--to', along(to));
+    // When the handles meet, the one that still has room to move goes on top.
+    from.style.zIndex = along(from) > 0.5 ? 1 : 0;
   }
-  slider.disabled = !on;
-  timeline = on ? Number(slider.value) : null;
+  from.disabled = to.disabled = !on;
+  timeline = on ? { from: Number(from.value), to: Number(to.value) } : null;
   $('timelineLabel').textContent = !years.length ? t('timeline.none')
-    : on ? t('timeline.year', { year: `${timeline} / ${timeline + 543}` }) : '';
+    : on ? t('timeline.year', { year: `${span(timeline)} / ${span(timeline, 543)}` }) : '';
 }
 
 const finders = {};
@@ -1180,15 +1194,18 @@ $('newLink').onclick = () => select(null);
 $('kind').onchange = syncKindFields;
 $('linkKind').onchange = syncLinkFields;
 $('relHousehold').onchange = suggestFamilyName;
-$('timelineOn').onchange = $('timelineYear').oninput = () => {
+$('timelineOn').onchange = () => {
   syncTimeline();
   applyFilters();
 };
-$('closeSteps').oninput = () => {
-  maxSteps = Number($('closeSteps').value);
-  $('closeLabel').textContent = t('close.upTo', { count: maxSteps });
-  Graph.linkVisibility(linkVisible);
-};
+// A handle stops at the other one, so the span never turns inside out.
+for (const [id, other, limit] of [['timelineFrom', 'timelineTo', Math.min], ['timelineTo', 'timelineFrom', Math.max]]) {
+  $(id).oninput = () => {
+    $(id).value = limit($(id).value, $(other).value);
+    syncTimeline();
+    applyFilters();
+  };
+}
 $('lookUpPlace').onclick = () => findPlace(byId.get(selected.id));
 $('placeByHand').onclick = () => placeByHand(selected.id);
 for (const b of document.querySelectorAll('[data-relation]')) {
@@ -1269,6 +1286,12 @@ $('rivals').onclick = () => {
   $('rivals').classList.toggle('active', showRivals);
   draw();
 };
+$('close').onclick = () => {
+  closeOn = !closeOn;
+  $('close').classList.toggle('active', closeOn);
+  framed = false;
+  draw();
+};
 
 $('themeSwitch').onclick = () => {
   const next = isDark() ? 'light' : 'dark';
@@ -1288,7 +1311,6 @@ function relabel(lang) {
   for (const [id, finder] of Object.entries(finders)) finder.input.placeholder = t(id === 'relExisting' ? 'rel.existingHint' : 'bar.search');
   fillChoices();
   $('result').textContent = '';
-  $('closeLabel').textContent = t('close.upTo', { count: maxSteps });
   showLegend();
   syncTimeline();
   applyFilters();
