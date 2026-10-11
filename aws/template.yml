@@ -1,0 +1,262 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  The Family Graph website: the page, the sign-in, the service that keeps shared family records,
+  and where those records and their files are kept. Everything here goes when the stack is deleted,
+  except the records and files themselves, which are held back so a slip cannot lose them.
+
+Parameters:
+  AlarmEmail:
+    Type: String
+    Description: Where to write when a month's charges pass the limit.
+  MonthlyLimit:
+    Type: Number
+    Default: 5
+    Description: US dollars in a month, past which AlarmEmail is written to.
+
+Resources:
+  # ---- The records ----
+
+  # Every item of every record, by two keys (see api/service.mjs).
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      # Any minute of the last 35 days can be brought back.
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      # Rows that were removed are forgotten a week later.
+      TimeToLiveSpecification: { AttributeName: gone, Enabled: true }
+      SSESpecification: { SSEEnabled: true }
+
+  # The pictures and PDFs of sources. Never read directly: the service hands out short-lived addresses.
+  Files:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: [!Sub 'https://${Site.DomainName}']
+            AllowedMethods: [GET, PUT]
+            AllowedHeaders: ['*']
+            MaxAge: 3000
+
+  # ---- Signing in ----
+
+  People:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-people'
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Schema:
+        - { Name: email, Required: true, Mutable: true }
+        - { Name: name, Required: true, Mutable: true }
+      Policies:
+        PasswordPolicy: { MinimumLength: 8, RequireLowercase: false, RequireUppercase: false, RequireNumbers: false, RequireSymbols: false }
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - { Name: verified_email, Priority: 1 }
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: 'Family Graph: your code'
+        EmailMessage: 'Your Family Graph code is {####}'
+
+  PageSignIn:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref People
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      IdTokenValidity: 60
+      AccessTokenValidity: 60
+      RefreshTokenValidity: 365
+      TokenValidityUnits: { IdToken: minutes, AccessToken: minutes, RefreshToken: days }
+
+  # ---- The service ----
+
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - { Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: 'sts:AssumeRole' }
+      ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole']
+      Policies:
+        - PolicyName: keep-records
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:DeleteItem', 'dynamodb:UpdateItem', 'dynamodb:Query', 'dynamodb:BatchWriteItem']
+                Resource: !GetAtt Table.Arn
+              - Effect: Allow
+                Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject']
+                Resource: !Sub '${Files.Arn}/*'
+              - Effect: Allow
+                Action: 's3:ListBucket'
+                Resource: !GetAtt Files.Arn
+              - Effect: Allow
+                Action: 'cognito-idp:AdminDeleteUser'
+                Resource: !GetAtt People.Arn
+
+  Service:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      Handler: index.handler
+      Code: api/
+      Role: !GetAtt ServiceRole.Arn
+      MemorySize: 512
+      Timeout: 20
+      Environment:
+        Variables:
+          TABLE: !Ref Table
+          FILES: !Ref Files
+          POOL: !Ref People
+
+  Api:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Ref AWS::StackName
+      ProtocolType: HTTP
+
+  # Only someone signed in gets through, and the service is told who they are.
+  ApiSignIn:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref Api
+      Name: signed-in
+      AuthorizerType: JWT
+      IdentitySource: ['$request.header.Authorization']
+      JwtConfiguration:
+        Issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${People}'
+        Audience: [!Ref PageSignIn]
+
+  ApiToService:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref Api
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt Service.Arn
+      PayloadFormatVersion: '2.0'
+
+  ApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: 'ANY /api/{proxy+}'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref ApiSignIn
+      Target: !Sub 'integrations/${ApiToService}'
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref Api
+      StageName: $default
+      AutoDeploy: true
+      # A family asks a few times a minute; anything far past that is not a family.
+      DefaultRouteSettings: { ThrottlingBurstLimit: 40, ThrottlingRateLimit: 20 }
+
+  ApiMayCallService:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Service
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*'
+
+  # ---- The page, and the one address everything is reached through ----
+
+  Page:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+
+  SiteReadsPage:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig: { Name: !Sub '${AWS::StackName}-page', OriginAccessControlOriginType: s3, SigningBehavior: always, SigningProtocol: sigv4 }
+
+  Site:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Ref AWS::StackName
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_200
+        Origins:
+          - Id: page
+            DomainName: !GetAtt Page.RegionalDomainName
+            OriginAccessControlId: !Ref SiteReadsPage
+            S3OriginConfig: { OriginAccessIdentity: '' }
+          - Id: api
+            DomainName: !Sub '${Api}.execute-api.${AWS::Region}.amazonaws.com'
+            CustomOriginConfig: { OriginProtocolPolicy: https-only, OriginSSLProtocols: [TLSv1.2] }
+        DefaultCacheBehavior:
+          TargetOriginId: page
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # AWS's "CachingOptimized"
+        CacheBehaviors:
+          - PathPattern: '/api/*'
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # AWS's "CachingDisabled"
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AWS's "AllViewerExceptHostHeader"
+
+  PageReadBySite:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref Page
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: 's3:GetObject'
+            Resource: !Sub '${Page.Arn}/*'
+            Condition:
+              StringEquals: { 'AWS:SourceArn': !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Site}' }
+
+  # ---- Watching the cost ----
+
+  Limit:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${AWS::StackName}-month'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: { Amount: !Ref MonthlyLimit, Unit: USD }
+      NotificationsWithSubscribers:
+        - Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 100, ThresholdType: PERCENTAGE }
+          Subscribers:
+            - { SubscriptionType: EMAIL, Address: !Ref AlarmEmail }
+
+Outputs:
+  Address: { Value: !Sub 'https://${Site.DomainName}' }
+  PageBucket: { Value: !Ref Page }
+  SiteId: { Value: !Ref Site }
+  ClientId: { Value: !Ref PageSignIn }
+  Region: { Value: !Ref AWS::Region }

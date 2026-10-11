@@ -6,6 +6,8 @@
 //   artifact  a claude.ai artifact; the record is kept in the artifact's shared database
 //   desktop   the desktop app (desktop/main.js); the record is kept by server.js, as with `npm start`
 //   mobile    the phone app and the page installed from the web; the record is kept on the device
+//   cloud     the website (see aws/); people sign in and share records. Built only when asked for by
+//             name, since it has to be told where its sign-in lives.
 import { build } from 'esbuild';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -55,7 +57,7 @@ function artifact() {
 // An app has to open without the internet, so the page and the libraries it fetches in the browser
 // (the copies in node_modules) are packed into one file. `backend` says where the record is kept.
 // Only the map still needs the internet: Google's map code cannot be packed.
-async function packed(dir, backend) {
+async function packed(dir, backend, mapsKey = MAPS_KEY) {
   const write = fresh(dir);
   await build({
     entryPoints: [fileURLToPath(at('public/app.js'))],
@@ -68,11 +70,14 @@ async function packed(dir, backend) {
         pack.onResolve({ filter: /^https:\/\/esm\.sh\// }, ({ path, resolveDir, kind }) =>
           pack.resolve(path.match(/esm\.sh\/((?:@[^/]+\/)?[^@?]+)/)[1], { resolveDir, kind }));
         if (backend) pack.onResolve({ filter: /^\.\/backend\.js$/ }, () => ({ path: fileURLToPath(at(backend)) }));
-        pack.onLoad({ filter: /[\\/]public[\\/]key\.js$/ }, () => ({ contents: `export const GOOGLE_MAPS_KEY = ${JSON.stringify(MAPS_KEY)};` }));
+        pack.onLoad({ filter: /[\\/]public[\\/]key\.js$/ }, () => ({ contents: `export const GOOGLE_MAPS_KEY = ${JSON.stringify(mapsKey)};` }));
+        pack.onLoad({ filter: /[\\/]web[\\/]cloud\.config\.js$/ }, () => ({
+          contents: `export const REGION = ${JSON.stringify(process.env.CLOUD_REGION)}; export const CLIENT_ID = ${JSON.stringify(process.env.CLOUD_CLIENT_ID)};`,
+        }));
       },
     }],
   });
-  if (!MAPS_KEY) console.warn(`${dir}: no GOOGLE_MAPS_KEY, so this build has no map.`);
+  if (!mapsKey) console.warn(`${dir}: no Google Maps key, so this build has no map.`);
   write('app.css', read('public/app.css'));
   return { write, page: read('public/index.html') };
 }
@@ -102,8 +107,16 @@ if ('serviceWorker' in navigator && !window.Capacitor) navigator.serviceWorker.r
   write('index.html', installable);
 }
 
-const targets = { artifact, desktop, mobile };
-for (const name of process.argv.length > 2 ? process.argv.slice(2) : Object.keys(targets)) {
+// The website has an address of its own, so its map key is one that works only from that address.
+async function cloud() {
+  if (!process.env.CLOUD_REGION || !process.env.CLOUD_CLIENT_ID) throw new Error('The cloud build needs CLOUD_REGION and CLOUD_CLIENT_ID; aws/deploy.sh sets them.');
+  const { write, page } = await packed('dist/cloud', 'web/backend.cloud.js', process.env.GOOGLE_MAPS_WEB_KEY ?? '');
+  // Family records are nobody else's business, so search engines are asked to stay away.
+  write('index.html', swap(page, '<title>', '<meta name="robots" content="noindex">\n<title>'));
+}
+
+const targets = { artifact, desktop, mobile, cloud };
+for (const name of process.argv.length > 2 ? process.argv.slice(2) : Object.keys(targets).filter((target) => target !== 'cloud')) {
   if (!targets[name]) throw new Error(`No such build: ${name}. Choose from ${Object.keys(targets).join(', ')}.`);
   await targets[name]();
   console.log(`Built dist/${name}/`);
