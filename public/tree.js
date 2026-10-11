@@ -36,12 +36,15 @@ export function buildForest(people, households, edges) {
   }
 
   // The line of a household is the partner more of its children are named after, when that settles it.
+  // The name a partner was born with counts for more than one they took later: when a wife takes her
+  // husband's family name, both now carry it, but the children are named after him.
   const line = new Map();
   for (const [household, partners] of partnersOf) {
-    const namedAfter = (p) => childrenOf.get(household).filter((child) => {
+    const namedAfter = (p) => childrenOf.get(household).reduce((score, child) => {
       const name = person.get(child).birthFamilyName;
-      return name && (name === person.get(p).familyName || name === person.get(p).birthFamilyName);
-    }).length;
+      if (!name) return score;
+      return score + (name === person.get(p).birthFamilyName ? 2 : 0) + (name === person.get(p).familyName ? 1 : 0);
+    }, 0);
     const ranked = partners.map((p) => [namedAfter(p), p]).sort((a, b) => b[0] - a[0]);
     if (ranked.length && ranked[0][0] > (ranked[1]?.[0] ?? 0)) line.set(household, ranked[0][1]);
   }

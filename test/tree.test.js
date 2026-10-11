@@ -56,6 +56,26 @@ test('someone with parents of their own is full under them and a marked copy bes
   assert.equal(union(cara, 'CK').elsewhere, true);
 });
 
+test('a wife who took her husband\'s name does not pull the children into her own line', () => {
+  const trees = buildForest(
+    [
+      { id: 1, birthFamilyName: 'ศรีสุข', familyName: 'ศรีสุข' }, // her father
+      { id: 2, birthFamilyName: 'ศรีสุข', familyName: 'ทองดี' }, // she took her husband's name
+      { id: 3, birthFamilyName: 'ทองดี', familyName: 'ทองดี' }, // her husband
+      { id: 4, birthFamilyName: 'ทองดี', familyName: 'ทองดี' }, // their child
+    ],
+    [{ id: 'A' }, { id: 'B' }],
+    [
+      { src: 1, dst: 'A', type: 'PARTNER_IN', props: {} }, { src: 2, dst: 'A', type: 'CHILD_OF', props: {} },
+      { src: 2, dst: 'B', type: 'PARTNER_IN', props: {} }, { src: 3, dst: 'B', type: 'PARTNER_IN', props: {} },
+      { src: 4, dst: 'B', type: 'CHILD_OF', props: {} },
+    ],
+  );
+  assert.deepEqual(trees.map((tree) => tree.person), [1, 3]);
+  assert.deepEqual(trees[1].unions[0].children.map((c) => c.person), [4]);
+  assert.equal(trees[0].unions[0].children[0].unions[0].elsewhere, true);
+});
+
 test('step-children stay with the household they descend from', () => {
   assert.deepEqual(union(root('ben'), 'BD').children.map((c) => c.person), ['eli', 'gus']);
 });

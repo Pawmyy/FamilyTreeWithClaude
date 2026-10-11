@@ -7,7 +7,7 @@ A family record stored as a graph instead of a tree. It keeps competing versions
 Needs Node 24+ (uses the built-in `node:sqlite`). No `npm install`.
 
 ```
-npm run seed    # optional: load a sample family into family.db
+npm run seed    # optional: load a made-up Thai family into an empty family.db
 npm start       # http://localhost:3000, restarts itself when server.js changes
 npm test
 npm run examples   # three film families in their own record, on http://localhost:3001
