@@ -83,6 +83,15 @@ The panel folds away with the ☰ button, or by clicking the open tab again.
 - **Related**: how two people are related.
 - **View**: the timeline, whether closeness lines are drawn and for how many steps apart, the colors shared by many things, the list of sources, and the edit log, where removals can be undone.
 
+## As a claude.ai artifact
+
+`node web/build.js` builds the same page into `dist/artifact/` for publishing as a claude.ai artifact. There is
+no server there, so `web/store.js` does in the browser what `server.js` does with SQLite, and
+`web/backend.artifact.js` keeps its rows in the artifact's shared database: everyone the artifact is shared
+with as a contributor edits the same family, and sees each other's changes as they happen. `test/store.test.js`
+holds the two to the same behavior. The Map view and looking places up are left out, because an artifact
+cannot reach a map service.
+
 ## Languages and themes
 
 The interface is in English and Thai, starting in Thai until you switch. All text lives in `public/i18n.js`;

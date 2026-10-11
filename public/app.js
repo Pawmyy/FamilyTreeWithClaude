@@ -1,10 +1,11 @@
 import ForceGraph3D from 'https://esm.sh/3d-force-graph@1.80.1?deps=three@0.186.1';
 import SpriteText from 'https://esm.sh/three-spritetext@1.10.0?deps=three@0.186.1';
 import * as THREE from 'https://esm.sh/three@0.186.1';
+import { api, onChange, photoUrl, putPhoto, start } from './backend.js';
 import { createFinder, rank } from './finder.js';
 import { getLang, has, LANGS, setLang, t } from './i18n.js';
 import { closeness, isDescent, kinship, shortestPath } from './kinship.js';
-import { createMap, lookUp } from './map.js';
+import { createMap, hasMap, lookUp } from './map.js';
 import { fullName, nameRecord, yearOf } from './record.js';
 import { kinshipTerm } from './terms.js';
 import { buildForest, layoutForest } from './tree.js';
@@ -108,7 +109,7 @@ function nodeColor(node) {
 const textures = new Map();
 function photoTexture(id) {
   if (!textures.has(id)) {
-    const texture = new THREE.TextureLoader().load('/api/photos/' + id);
+    const texture = new THREE.TextureLoader().load(photoUrl(id));
     texture.colorSpace = THREE.SRGBColorSpace;
     textures.set(id, texture);
   }
@@ -430,6 +431,7 @@ function drawMap() {
 
 // Look a place up by its name. One match is used as it is, several are offered, none means asking for a click.
 async function findPlace(place) {
+  if (!hasMap) return;
   $('whereStatus').textContent = t('map.searching');
   let found = [];
   try {
@@ -468,17 +470,6 @@ function lookAt(id) {
 }
 
 // ---- Data and text ----
-
-async function api(method, path, body) {
-  const res = await fetch('/api/' + path, {
-    method,
-    headers: { 'content-type': 'application/json' },
-    body: body && JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
-}
 
 const membersOf = (household, type) =>
   g.edges.filter((e) => e.type === type && e.dst === household).map((e) => byId.get(e.src));
@@ -547,7 +538,17 @@ function button(text, onclick, className = '') {
   return el('button', { textContent: text, className, onclick });
 }
 
-const confirmRemove = () => confirm(t('confirm.remove'));
+// Ask before removing, in the page itself: a browser's own dialog is not shown everywhere the page runs.
+function confirmRemove() {
+  const box = $('confirm');
+  box.returnValue = '';
+  box.showModal();
+  return new Promise((resolve) => {
+    box.onclose = () => resolve(box.returnValue === 'yes');
+    $('confirmYes').onclick = () => box.close('yes');
+    $('confirmNo').onclick = () => box.close();
+  });
+}
 
 // ---- Finders: every place a person, household or place is chosen ----
 
@@ -806,7 +807,7 @@ function versionRow(v) {
     ? el('em', { textContent: t('record.accepted') })
     : button(t('record.accept'), () => act(() => api('POST', `versions/${v.id}/accept`), t('toast.accepted'))));
   head.append(button('✕', () => act(async () => {
-    if (!confirmRemove()) return false;
+    if (!await confirmRemove()) return false;
     await api('DELETE', 'versions/' + v.id);
   }, t('toast.removed')), 'danger'));
 
@@ -898,7 +899,7 @@ function renderRecord() {
     const text = `${source.title} · ${t('source.' + source.kind)} · ${t('record.supports', { count: used })}`;
     const row = el('li');
     row.append(el('span', { textContent: text, title: source.note }), button('✕', () => act(async () => {
-      if (!confirmRemove()) return false;
+      if (!await confirmRemove()) return false;
       await api('DELETE', 'sources/' + source.id);
     }, t('toast.removed')), 'danger'));
     return row;
@@ -1008,7 +1009,7 @@ function select(next) {
     $('cardName').textContent = label(node);
     $('cardDetail').textContent = detail(node);
     $('cardPhoto').hidden = !node.photo;
-    if (node.photo) $('cardPhoto').src = '/api/photos/' + node.id;
+    if (node.photo) $('cardPhoto').src = photoUrl(node.id);
   }
   $('relatives').hidden = !person;
   if (person) $('relativesLegend').textContent = t('rel.title', { name: label(person) });
@@ -1129,14 +1130,13 @@ async function squareJpeg(file, size = 256) {
 }
 
 async function uploadPhoto(nodeId, jpeg) {
-  const res = await fetch('/api/photos/' + nodeId, { method: 'PUT', body: jpeg });
-  if (!res.ok) throw new Error((await res.json()).error);
+  await putPhoto(nodeId, jpeg);
   textures.delete(nodeId);
 }
 
 function deleteLink(id) {
   return act(async () => {
-    if (!confirmRemove()) return false;
+    if (!await confirmRemove()) return false;
     await api('DELETE', 'versions/' + id);
   }, t('toast.removed'));
 }
@@ -1161,7 +1161,7 @@ on('save', async () => {
 });
 
 on('del', async () => {
-  if (!confirmRemove()) return false;
+  if (!await confirmRemove()) return false;
   await api('DELETE', 'nodes/' + selected.id);
   return t('toast.removed');
 });
@@ -1329,4 +1329,15 @@ resize();
 
 setMouse();
 relabel(prefs.get('lang') ?? 'th');
-refresh().catch((err) => notify(err.message, true));
+document.body.classList.toggle('no-map', !hasMap);
+start().then((notice) => {
+  $('standing').hidden = !notice;
+  if (notice) $('standing').dataset.i18n = notice;
+  if (notice) $('standing').textContent = t(notice);
+  return refresh();
+}).catch((err) => notify(has(err.message) ? t(err.message) : err.message, true));
+onChange(() => {
+  // Someone else's change may include a new photo.
+  textures.clear();
+  refresh();
+});

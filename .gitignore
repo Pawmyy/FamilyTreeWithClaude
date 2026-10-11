@@ -3,4 +3,5 @@
 *.db-journal
 *.bak
 node_modules/
+dist/
 .DS_Store

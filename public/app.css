@@ -39,8 +39,9 @@
 
 [hidden] { display: none !important; }
 * { box-sizing: border-box; }
+html { height: 100%; }
 body {
-  margin: 0; display: flex; height: 100vh;
+  margin: 0; display: flex; height: 100%;
   font: 16px/1.45 system-ui, "Sarabun", "Noto Sans Thai", sans-serif;
   background: var(--page); color: var(--text);
 }
@@ -158,3 +159,21 @@ input[type="color"] { width: 48px; flex: none; padding: 2px; cursor: pointer; }
   font-weight: 600; background: var(--ok); color: var(--panel); max-width: 80%;
 }
 #toast.error { background: var(--danger); }
+#standing { padding: 6px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--danger); font-size: 14px; }
+.no-map [data-view="map"], .no-map #whereBox { display: none !important; }
+#confirm { max-width: min(360px, calc(100% - 32px)); padding: 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+#confirm::backdrop { background: rgb(0 0 0 / 0.4); }
+#confirm p { margin: 0 0 16px; }
+#confirm .answers { display: flex; gap: 8px; }
+#confirm #confirmYes { background: var(--danger); color: var(--panel); }
+/* On a phone the picture goes on top and the panel below it. */
+@media (max-width: 700px) {
+  body { flex-direction: column-reverse; }
+  #side { width: 100%; height: 50%; border-right: none; border-top: 1px solid var(--border); }
+  #bar { flex-wrap: wrap; }
+  #bar .spacer { display: none; }
+  #search { width: auto; flex: 1 1 140px; }
+  #legend { display: none; }
+  #notices { top: 116px; }
+  #standing { max-width: 100%; }
+}

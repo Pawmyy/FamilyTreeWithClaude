@@ -2,6 +2,9 @@
 // For now the map is held to Thailand and China.
 import L from 'https://esm.sh/leaflet@1.9.4';
 
+// Builds that cannot reach a map service swap this file for one that says false.
+export const hasMap = true;
+
 const REGION = L.latLngBounds([5.6, 73.5], [53.6, 135.1]);
 
 // `onClick({ lat, lng })` is called for a click on the map itself.

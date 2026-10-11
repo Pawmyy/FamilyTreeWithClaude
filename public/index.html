@@ -198,12 +198,21 @@
   </header>
   <!-- Under the search box: the tags and timeline in force, and places still waiting for a spot on the map. -->
   <div id="notices">
+    <div id="standing" hidden></div>
     <div id="chips"></div>
     <div id="unplaced" hidden></div>
   </div>
   <div id="legend"></div>
   <div id="toast" role="status" hidden></div>
 </main>
+
+<dialog id="confirm">
+  <p data-i18n="confirm.remove"></p>
+  <div class="answers">
+    <button id="confirmNo" class="ghost" data-i18n="confirm.no"></button>
+    <button id="confirmYes" data-i18n="confirm.yes"></button>
+  </div>
+</dialog>
 
 <script type="module" src="app.js"></script>
 </body>
