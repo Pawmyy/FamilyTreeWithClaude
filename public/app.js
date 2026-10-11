@@ -22,6 +22,7 @@ let onPath = new Set(); // node ids and 'e' + edge ids on the highlighted path
 let view = '3d'; // '3d' | '2d' | 'tree' | 'map'
 let framed = false;
 let showRivals = false;
+let disputed = new Set(); // ids of the people with a fact that has more than one version
 let relation = null; // which relative is being added: 'parent' | 'partner' | 'child' | 'sibling'
 let flyingUntil = 0; // while the camera is being moved for the user, the pan limit stands aside
 let filters = []; // tags chosen in the search box: { kind: 'family' | 'place' | 'born', value, label }
@@ -75,6 +76,21 @@ const SHAPE = {
   event: new THREE.ConeGeometry(5.5, 10, 4),
 };
 const HALO = new THREE.SphereGeometry(1, 14, 10);
+
+// A ring that faces the viewer from every side, for marking a node.
+const rings = new Map();
+function ringTexture(color) {
+  if (!rings.has(color)) {
+    const canvas = Object.assign(document.createElement('canvas'), { width: 128, height: 128 });
+    const pen = canvas.getContext('2d');
+    pen.strokeStyle = color;
+    pen.lineWidth = 10;
+    pen.arc(64, 64, 56, 0, 2 * Math.PI);
+    pen.stroke();
+    rings.set(color, new THREE.CanvasTexture(canvas));
+  }
+  return rings.get(color);
+}
 
 // A color of a given hue that suits the theme: bright on dark, deeper on light.
 const hue = (degrees) => `hsl(${degrees}, ${isDark() ? 100 : 80}%, ${isDark() ? 64 : 38}%)`;
@@ -140,6 +156,11 @@ function nodeObject(node) {
     halo.scale.setScalar((node.photo ? 12 : 9) * node.size);
     group.add(halo);
   }
+  if (showRivals && node.disputed) {
+    const ring = new THREE.Sprite(new THREE.SpriteMaterial({ map: ringTexture(ink.danger), opacity, depthWrite: false }));
+    ring.scale.setScalar((node.photo ? 22 : 17) * node.size);
+    group.add(ring);
+  }
   if (node.label) {
     // Names are in the text color so they stay readable; the shape carries the family color.
     const text = new SpriteText(node.copy ? `↗ ${node.label}` : node.label, 4, ink.text);
@@ -160,6 +181,8 @@ const Graph = new ForceGraph3D($('graph'))
   // A closeness line is thinner the more steps apart the two people are.
   .linkWidth((l) => (isLit(l) ? 2.5 : l.steps ? Math.max(0.15, 1.8 / l.steps) : l.type === 'PARTNER_IN' ? 1.2 : 0.5))
   .linkVisibility(linkVisible)
+  // A rival link bends away from the accepted one, which may join the same two things.
+  .linkCurvature((l) => l.curve ?? 0)
   .linkOpacity(0.7)
   .linkDirectionalArrowLength((l) => (l.type === 'PARTNER_IN' || l.elbow || l.steps ? 0 : 3))
   .linkDirectionalArrowRelPos(1)
@@ -259,8 +282,8 @@ function setView(next) {
   const onMap = view === 'map';
   $('map').hidden = !onMap;
   $('graph').hidden = onMap;
-  // Rival links are drawn only where every link is drawn.
-  $('rivals').hidden = view !== '3d' && view !== '2d';
+  // The map draws places, which have nothing to dispute.
+  $('rivals').hidden = onMap;
   showLegend();
   if (onMap) {
     Graph.pauseAnimation();
@@ -285,7 +308,7 @@ function setView(next) {
 }
 
 // How a node and a link look, whichever view draws them.
-const face = (node) => ({ ref: node.id, kind: node.kind, photo: node.photo, label: graphLabel(node), hover: label(node), color: nodeColor(node), size: 1 });
+const face = (node) => ({ ref: node.id, kind: node.kind, photo: node.photo, disputed: disputed.has(node.id), label: graphLabel(node), hover: label(node), color: nodeColor(node), size: 1 });
 const lookOf = (edge) => ({ edge: edge.id, type: edge.type, label: linkText(edge), color: edge.accepted ? colorOf('link', edge.type) : ink.danger });
 
 // Closeness: every two people on the same family tree pull gently toward each other, harder the fewer
@@ -318,7 +341,9 @@ function graphScene() {
         // CHILD_OF is stored child -> household; draw it household -> child so the arrow lands on the child.
         const [source, target] = e.type === 'CHILD_OF' ? [e.dst, e.src] : [e.src, e.dst];
         const distance = DISTANCE[e.type === 'CHILD_OF' ? e.props.kind ?? 'birth' : e.type] ?? DISTANCE.other;
-        return { source, target, elbow: false, distance, ...lookOf(e) };
+        // Each further rival of one fact bends a little more, so none hides another.
+        const curve = e.accepted ? 0 : 0.3 * (1 + g.rivals.filter((r) => r.fact === e.fact && r.id < e.id).length);
+        return { source, target, elbow: false, distance, curve, ...lookOf(e) };
       }),
       ...closenessLinks(),
     ],
@@ -1061,6 +1086,7 @@ async function refresh() {
   // Every view is computed from the accepted links; the rivals are only listed, and drawn on request.
   g = { ...data, edges: links.filter((l) => l.accepted), rivals: links.filter((l) => !l.accepted), log };
   byId = new Map(g.nodes.map((n) => [n.id, n]));
+  disputed = new Set(g.versions.filter((v) => v.target === null && !v.accepted).map((v) => v.node));
   const stillThere = selected && (selected.group === 'nodes' ? byId.has(selected.id) : findLink(selected.id));
   // A tag for a place that has since been removed no longer means anything.
   filters = filters.filter((f) => f.kind !== 'place' || byId.has(f.value));
@@ -1292,6 +1318,9 @@ $('rivals').onclick = () => {
   showRivals = !showRivals;
   $('rivals').classList.toggle('active', showRivals);
   draw();
+  // The rings change how existing nodes look, so their shapes have to be made again.
+  Graph.refresh();
+  if (showRivals && !disputed.size && !g.rivals.length) notify(t('bar.noDisputes'));
 };
 
 $('themeSwitch').onclick = () => {
