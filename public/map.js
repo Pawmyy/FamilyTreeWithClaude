@@ -1,12 +1,12 @@
 // The map view: places on a real map, and looking a place up by its name.
-// For now the map is held to Thailand.
+// For now the map is held to Thailand and China.
 import L from 'https://esm.sh/leaflet@1.9.4';
 
-const THAILAND = L.latLngBounds([5.6, 97.3], [20.5, 105.7]);
+const REGION = L.latLngBounds([5.6, 73.5], [53.6, 135.1]);
 
 // `onClick({ lat, lng })` is called for a click on the map itself.
 export function createMap(container, { onClick }) {
-  const map = L.map(container, { maxBounds: THAILAND.pad(0.3), maxBoundsViscosity: 1, minZoom: 5, zoomControl: false }).fitBounds(THAILAND);
+  const map = L.map(container, { maxBounds: REGION.pad(0.1), maxBoundsViscosity: 1, minZoom: 3, zoomControl: false }).fitBounds(REGION);
   // The page's own bar sits along the top, so the zoom buttons go at the bottom.
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -38,16 +38,16 @@ export function createMap(container, { onClick }) {
       }
     },
     lookAt: ({ lat, lng }) => map.setView([lat, lng], Math.max(map.getZoom(), 9)),
-    fit: () => map.fitBounds(THAILAND),
+    fit: () => map.fitBounds(REGION),
     // Leaflet has to be told when its box changes size or becomes visible.
     resize: () => map.invalidateSize(),
   };
 }
 
-// Places in Thailand matching a name, best first, from OpenStreetMap's public search.
+// Places in Thailand or China matching a name, best first, from OpenStreetMap's public search.
 // Only the name is sent. Resolves to [{ label, lat, lng }], possibly empty.
 export async function lookUp(name, lang) {
-  const query = new URLSearchParams({ format: 'jsonv2', countrycodes: 'th', limit: 5, 'accept-language': lang, q: name });
+  const query = new URLSearchParams({ format: 'jsonv2', countrycodes: 'th,cn', limit: 5, 'accept-language': lang, q: name });
   const res = await fetch('https://nominatim.openstreetmap.org/search?' + query);
   if (!res.ok) throw new Error('Place lookup failed.');
   return (await res.json()).map((found) => ({ label: found.display_name, lat: Number(found.lat), lng: Number(found.lon) }));
