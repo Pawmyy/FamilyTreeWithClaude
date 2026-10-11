@@ -72,6 +72,72 @@ export function kinship(a, b, edges) {
   return { kind: 'cousin', degree: Math.min(up, down) - 1, removed: Math.abs(up - down) };
 }
 
+// Each household's partners and the children who descend from it.
+function households(edges) {
+  const found = new Map();
+  const of = (id) => found.get(id) ?? found.set(id, { partners: [], children: [] }).get(id);
+  for (const e of edges) {
+    if (e.type === 'PARTNER_IN') of(e.dst).partners.push(e.src);
+    else if (isDescent(e)) of(e.dst).children.push(e.src);
+  }
+  return found;
+}
+
+// Closeness: how many steps apart two people are on the family tree. Parent to child is one step and
+// partners are one step, so siblings are 2 apart, first cousins 4, a partner's cousin 5.
+// Returns steps(a, b): a number, or undefined when nothing joins them.
+export function closeness(edges) {
+  const beside = new Map();
+  const join = (a, b) => {
+    for (const [from, to] of [[a, b], [b, a]]) beside.set(from, (beside.get(from) ?? new Set()).add(to));
+  };
+  for (const [id, { partners, children }] of households(edges)) {
+    for (const p of partners) for (const q of partners) if (p !== q) join(p, q);
+    // With no parents recorded, an unnamed parent stands in, so brothers and sisters are still two steps apart.
+    for (const child of children) for (const parent of partners.length ? partners : ['unknown parent of ' + id]) join(child, parent);
+  }
+
+  const reached = new Map();
+  function from(start) {
+    if (!reached.has(start)) {
+      const steps = new Map([[start, 0]]);
+      const queue = [start];
+      for (const cur of queue) {
+        for (const next of beside.get(cur) ?? []) {
+          if (steps.has(next)) continue;
+          steps.set(next, steps.get(cur) + 1);
+          queue.push(next);
+        }
+      }
+      reached.set(start, steps);
+    }
+    return reached.get(start);
+  }
+  return (a, b) => from(a).get(b);
+}
+
+// How many descendants each person has, as a Map from person to count. People with none are absent.
+export function descendantCounts(edges) {
+  const childrenOf = new Map();
+  for (const { partners, children } of households(edges).values()) {
+    for (const p of partners) childrenOf.set(p, [...(childrenOf.get(p) ?? []), ...children]);
+  }
+  const counts = new Map();
+  for (const person of childrenOf.keys()) {
+    const below = new Set();
+    const queue = [person];
+    for (const cur of queue) {
+      for (const child of childrenOf.get(cur) ?? []) {
+        if (below.has(child) || child === person) continue;
+        below.add(child);
+        queue.push(child);
+      }
+    }
+    counts.set(person, below.size);
+  }
+  return counts;
+}
+
 // Shortest chain of links of any type between two nodes, ignoring direction.
 // Returns [{ edge, from, to }, ...] in walking order, or null if unconnected.
 export function shortestPath(a, b, edges) {

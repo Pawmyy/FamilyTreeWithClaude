@@ -165,10 +165,12 @@ test('adding relatives builds the households in between', async () => {
   assert.equal((await getGraph()).nodes.some((n) => n.name === 'X'), false, 'the refused parent was not left behind');
 
   // A partner who takes my family name, then a child in that household, then one with the other parent unknown.
-  const partner = await add({ relation: 'partner', other: newPerson('Dao', 'Kaewta'), takeName: 'other' });
+  const partner = await add({ relation: 'partner', other: newPerson('Dao', 'Kaewta'), takeName: 'other', married: '2560' });
   let g = await getGraph();
   assert.deepEqual([find(g, partner).name, find(g, partner).birthFamilyName], ['Dao Srisai', 'Kaewta']);
   const ours = (await links()).find(([node, field]) => node === partner && field === 'PARTNER_IN')[2];
+  assert.equal(find(g, ours).props.start, '2560', 'the household began on the marriage date');
+  assert.equal(g.versions.find((v) => v.node === partner && v.value.reason === 'marriage').value.from, '2560');
   const child = await add({ relation: 'child', other: newPerson('Nong', 'Srisai'), household: ours, kind: 'adopted' });
   const alone = await add({ relation: 'child', other: sibling });
   all = await links();

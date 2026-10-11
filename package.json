@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node --watch server.js",
     "seed": "node seed.js",
+    "examples": "node examples.js && DB=examples.db PORT=3001 node server.js",
     "test": "node --test"
   }
 }

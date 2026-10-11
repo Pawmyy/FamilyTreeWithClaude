@@ -281,7 +281,7 @@ function record(db, entry, removed) {
 
 // Add someone to the family by what they are to `person`, creating the household in between when needed.
 // `other` is an existing person's id, or the details of a new person.
-function addRelative(db, { person, relation, other, kind = 'birth', household = null, takeName = '' }) {
+function addRelative(db, { person, relation, other, kind = 'birth', household = null, takeName = '', married = '' }) {
   const otherId = typeof other === 'number' ? other : addNode(db, { kind: 'person', ...other }).id;
   const links = graph(db).versions.filter((v) => v.target !== null && v.accepted);
   const partnersIn = (h) => links.filter((v) => v.field === 'PARTNER_IN' && v.target === h);
@@ -297,11 +297,12 @@ function addRelative(db, { person, relation, other, kind = 'birth', household = 
   };
 
   if (relation === 'partner') {
-    const h = newHousehold();
+    // The date they married, when given, is when the household began and when any name change took effect.
+    const h = addNode(db, { kind: 'household', props: married ? { start: married } : {} }).id;
     join(person, h, 'PARTNER_IN');
     join(otherId, h, 'PARTNER_IN');
-    if (takeName === 'other') takeFamilyName(db, otherId, person);
-    if (takeName === 'person') takeFamilyName(db, person, otherId);
+    if (takeName === 'other') takeFamilyName(db, otherId, person, married);
+    if (takeName === 'person') takeFamilyName(db, person, otherId, married);
   } else if (relation === 'child') {
     const h = household ?? newHousehold();
     if (!household) join(person, h, 'PARTNER_IN');
@@ -319,12 +320,13 @@ function addRelative(db, { person, relation, other, kind = 'birth', household = 
 }
 
 // `taker` starts carrying `giver`'s current family name: a new entry in their name record.
-function takeFamilyName(db, taker, giver) {
+function takeFamilyName(db, taker, giver, from) {
   const g = graph(db);
   const family = g.nodes.find((n) => n.id === giver).familyName;
   if (!family) return;
   const current = nameRecord(g.versions.filter((v) => v.node === taker && v.target === null && v.accepted)).at(-1)?.value;
-  addVersion(db, { node: taker, field: 'name', value: { ...(current?.given && { given: current.given }), family, reason: 'marriage' } });
+  const value = { ...(current?.given && { given: current.given }), family, ...(from && { from }), reason: 'marriage' };
+  addVersion(db, { node: taker, field: 'name', value });
 }
 
 // Put back what a removal took out, under the original ids.

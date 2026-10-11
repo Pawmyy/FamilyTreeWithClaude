@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { kinship, shortestPath } from '../public/kinship.js';
+import { closeness, descendantCounts, kinship, shortestPath } from '../public/kinship.js';
 import { kinshipTerm } from '../public/terms.js';
 
 // Tiny fixture builder: people are just string ids.
@@ -117,6 +117,34 @@ test('Thai falls back to a neutral phrase when sex or age is not recorded', () =
   assert.equal(neutral('frank', 'cara'), 'พี่น้องของพ่อแม่');
   assert.equal(neutral('george', 'cara'), 'ปู่ย่าตายาย');
   assert.equal(neutral('anna', 'frank'), 'พี่น้อง');
+});
+
+test('closeness counts steps on the family tree', () => {
+  const steps = closeness(edges);
+  assert.equal(steps('anna', 'cara'), 1, 'parent and child');
+  assert.equal(steps('anna', 'ben'), 1, 'partners');
+  assert.equal(steps('anna', 'frank'), 2, 'siblings');
+  assert.equal(steps('george', 'cara'), 2, 'grandparent');
+  assert.equal(steps('cara', 'jack'), 4, 'first cousins');
+  assert.equal(steps('kai', 'jack'), 5, "a partner's cousin");
+  assert.equal(steps('dee', 'cara'), 2, 'step-parent, through the parent they are partnered with');
+  assert.equal(steps('quin', 'rae'), 2, 'siblings whose parents are not recorded');
+  assert.equal(steps('quin', 'tess'), 3);
+  assert.equal(steps('cara', 'cara'), 0);
+  assert.equal(steps('cara', 'quin'), undefined, 'nothing joins them');
+  assert.equal(steps('ivy', 'cara'), 4, 'a godparent link is not a step on the tree: Ivy is her uncle Frank\'s wife');
+});
+
+test('descendants are counted once each, however many lines lead to them', () => {
+  const counts = descendantCounts(edges);
+  assert.equal(counts.get('george'), 7); // anna, frank, cara, jack, lily, noah, pia
+  assert.equal(counts.get('ben'), 5); // cara, eli, gus, lily, pia; Cara is his by birth, not counted again as a step-child
+  assert.equal(counts.get('pia'), undefined);
+});
+
+test('years are read from free text, with Buddhist Era years on the same scale', async () => {
+  const { yearOf } = await import('../public/record.js');
+  assert.deepEqual(['1990', 'c. 1890', '2533', 'พ.ศ. 2481', '41 BBY', '', undefined].map(yearOf), [1990, 1890, 1990, 1938, NaN, NaN, NaN]);
 });
 
 test('shortestPath walks any link type in either direction', () => {

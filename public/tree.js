@@ -7,8 +7,10 @@
 // A tree node is { person, copy, unions }, and a union is { household, partner, children, elsewhere }.
 // `partner` is { person, copy } or null; `elsewhere` means the children are drawn in the partner's tree.
 import { isDescent } from './kinship.js';
+import { yearOf } from './record.js';
 
-const year = (text) => Number(/\d{3,4}/.exec(text ?? '')?.[0] ?? Infinity);
+// For putting brothers and sisters in order; the undated go last.
+const year = (text) => (Number.isNaN(yearOf(text)) ? Infinity : yearOf(text));
 
 // people: [{ id, familyName, birthFamilyName, born }]; households: [{ id }]; edges: the accepted links.
 export function buildForest(people, households, edges) {

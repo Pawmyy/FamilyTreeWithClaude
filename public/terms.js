@@ -3,15 +3,11 @@
 // and via is B's parent on that side of the family. Each is { sex, born } or undefined.
 // With sex or birth years missing, the wording falls back to a neutral phrase.
 
-// The first year in a free-text date, with Buddhist Era years brought onto the same scale.
-function year(text) {
-  const y = Number(/\d{3,4}/.exec(text ?? '')?.[0]);
-  return y > 2300 ? y - 543 : y;
-}
+import { yearOf } from './record.js';
 
 // Whether a is 'older' or 'younger' than b, or undefined when the record cannot tell.
 function age(a, b) {
-  const gap = year(a?.born) - year(b?.born);
+  const gap = yearOf(a?.born) - yearOf(b?.born);
   return gap < 0 ? 'older' : gap > 0 ? 'younger' : undefined;
 }
 
