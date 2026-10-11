@@ -943,7 +943,7 @@ async function openFile(source) {
   let url;
   try {
     // Read whole and shown from memory, so it looks the same wherever the record keeps it.
-    url = URL.createObjectURL(await (await fetch(fileUrl(source.id))).blob());
+    url = URL.createObjectURL(await (await fetch(await fileUrl(source.id))).blob());
   } catch {
     return notify(t('error.fileGone'), true);
   }
@@ -1053,7 +1053,8 @@ function renderRecord() {
   $('logList').replaceChildren(...g.log.map((entry) => {
     const when = new Date(entry.at.replace(' ', 'T') + 'Z').toLocaleString(getLang());
     const row = el('li');
-    row.append(el('span', { textContent: logText(entry) + (entry.undone ? ` (${t('record.undone')})` : ''), title: when }));
+    // Where several people keep one record, each entry says who made the change.
+    row.append(el('span', { textContent: (entry.by ? `${entry.by}: ` : '') + logText(entry) + (entry.undone ? ` (${t('record.undone')})` : ''), title: when }));
     if (entry.removable && !entry.undone) {
       row.append(button(t('record.undo'), () => act(() => api('POST', `log/${entry.id}/undo`), t('toast.restored')), 'ghost'));
     }

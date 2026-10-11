@@ -6,11 +6,12 @@
 //   sources   { id, kind, title, note }
 //   files     { id: the source's id, type, data: where the file is read from, a data: URL or a path }
 //   photos    { id: the node's id, data: a JPEG as a data: URL }
-//   log       { id, at, summary, removed, undone }
+//   log       { id, at, summary, removed, undone, by: who made the change, where the keeper knows }
 //   settings  { id: 'colors', value }
 //
 // A keeper has start(onTable) -> Promise, calling onTable(table, rows) with a table's rows whenever they
 // are read or change, and write(ops) -> Promise for ops [{ table, id, row }], where a null row removes.
+// A keeper that knows who is making the changes says so with who() -> their name.
 // Rows are never changed in place: a change puts a new row, so a keeper may hand out frozen ones.
 import { fullName, nameRecord } from '../public/record.js';
 
@@ -187,7 +188,8 @@ export function createStore(keeper) {
 
   // entry: { action, kind?, field?, name?, ... }, see the log.* texts in i18n.js.
   function record(entry, removed = null) {
-    put('log', { id: newId(), at: new Date().toISOString().slice(0, 19).replace('T', ' '), summary: entry, removed, undone: false });
+    const by = keeper.who?.();
+    put('log', { id: newId(), at: new Date().toISOString().slice(0, 19).replace('T', ' '), summary: entry, removed, undone: false, ...(by && { by }) });
     // The log is for undoing recent slips, so only its newest entries are kept.
     for (const old of rows('log').slice(0, -LOG_KEPT)) drop('log', old.id);
   }
@@ -382,7 +384,7 @@ export function createStore(keeper) {
       }
       if (route === 'GET log') {
         return rows('log').reverse().slice(0, 100)
-          .map(({ id, at, summary, undone, removed }) => ({ id, at, summary, undone, removable: removed !== null }));
+          .map(({ id, at, summary, undone, removed, by }) => ({ id, at, summary, undone, removable: removed !== null, ...(by && { by }) }));
       }
       return mutate(() => {
         // A copy, so nothing kept here is shared with the page.
