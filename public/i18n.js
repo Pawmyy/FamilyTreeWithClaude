@@ -159,6 +159,7 @@ const STRINGS = {
     'close.on': 'Draw closeness lines',
     'close.upTo': 'Between people up to {count} steps apart on the family tree.',
     'close.steps': '{count} steps apart',
+    'close.key': 'The color of a line for each number of steps apart',
     'colors.noFamilies': 'People are colored by the family name they were born with. Nobody has one yet.',
     'colors.reset': 'Back to the automatic color',
 
@@ -388,6 +389,7 @@ const STRINGS = {
     'close.on': 'ลากเส้นความใกล้ชิด',
     'close.upTo': 'ระหว่างคนที่ห่างกันไม่เกิน {count} ขั้นในผังครอบครัว',
     'close.steps': 'ห่างกัน {count} ขั้น',
+    'close.key': 'สีของเส้นตามจำนวนขั้นที่ห่างกัน',
     'colors.noFamilies': 'สีของแต่ละคนมาจากนามสกุลเมื่อแรกเกิด ตอนนี้ยังไม่มีใครมีนามสกุล',
     'colors.reset': 'กลับไปใช้สีอัตโนมัติ',
 

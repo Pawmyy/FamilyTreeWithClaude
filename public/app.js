@@ -64,6 +64,7 @@ function applyTheme() {
   readTheme();
   Graph.backgroundColor(ink.stage);
   draw();
+  renderCloseKey();
   drawMap();
   select(selected);
 }
@@ -183,7 +184,7 @@ const Graph = new ForceGraph3D($('graph'))
   .linkLabel('label')
   .linkColor((l) => (isLit(l) ? ink.highlight : l.color))
   // A closeness line is thinner the more steps apart the two people are.
-  .linkWidth((l) => (isLit(l) ? 2.5 : l.steps ? Math.max(0.15, 1.8 / l.steps) : l.type === 'PARTNER_IN' ? 1.2 : 0.5))
+  .linkWidth((l) => (isLit(l) ? 2.5 : l.steps ? Math.max(0.6, 2.4 - 0.3 * (l.steps - 2)) : l.type === 'PARTNER_IN' ? 1.2 : 0.5))
   .linkVisibility(linkVisible)
   // A rival link bends away from the accepted one, which may join the same two things.
   .linkCurvature((l) => l.curve ?? 0)
@@ -318,6 +319,20 @@ const lookOf = (edge) => ({ edge: edge.id, type: edge.type, label: linkText(edge
 // Closeness: every two people on the same family tree pull gently toward each other, harder the fewer
 // steps apart they are, so near relatives settle together and distant ones apart. One step apart
 // (parent and child, partners) is already drawn through their household, so lines start at two steps.
+// The color of a closeness line: warm for the nearest relatives, through to cool for the furthest drawn.
+const MAX_STEPS = 8;
+const closeColor = (steps) => hue(10 + (240 * (Math.min(steps, MAX_STEPS) - 2)) / (MAX_STEPS - 2));
+
+// The key under the slider: one swatch for each number of steps being drawn.
+function renderCloseKey() {
+  $('closeKey').hidden = !closeLines;
+  $('closeKey').replaceChildren(...Array.from({ length: maxSteps - 1 }, (_, i) => {
+    const item = el('span', { textContent: String(i + 2) });
+    item.prepend(Object.assign(el('i'), { style: `background: ${closeColor(i + 2)}` }));
+    return item;
+  }));
+}
+
 function closenessLinks() {
   const people = g.nodes.filter((n) => n.kind === 'person');
   const steps = closeness(g.edges);
@@ -328,7 +343,7 @@ function closenessLinks() {
       if (apart === undefined) continue;
       links.push({
         source: a.id, target: b.id, steps: apart, elbow: false, edge: null, type: 'CLOSE',
-        label: t('close.steps', { count: apart }), color: ink.muted,
+        label: t('close.steps', { count: apart }), color: closeColor(apart),
         distance: apart * 40, strength: 0.15 / (apart * apart),
       });
     }
@@ -1244,6 +1259,7 @@ $('closeOn').onchange = $('closeSteps').oninput = () => {
   maxSteps = Number($('closeSteps').value);
   $('closeSteps').disabled = !closeLines;
   $('closeLabel').textContent = t('close.upTo', { count: maxSteps });
+  renderCloseKey();
   Graph.linkVisibility(linkVisible);
 };
 function setOthers(on) {
