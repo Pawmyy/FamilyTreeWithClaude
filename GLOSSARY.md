@@ -100,7 +100,7 @@ Who gave a version: a person in the record, or anyone else by name.
 _Avoid_: Author, editor
 
 **Source**:
-A piece of evidence a version rests on: a certificate, a register, a photograph, an interview, or a memory. One source can support many versions.
+A piece of evidence a version rests on: a certificate, a register, a photograph, an interview, or a memory. One source can support many versions, and can carry one file, a picture or a PDF of the thing itself.
 _Avoid_: Citation, reference, proof
 
 **Edit log**:

@@ -19,6 +19,14 @@ export async function putPhoto(nodeId, jpeg) {
   if (!res.ok) throw new Error((await res.json()).error);
 }
 
+// A source's file: a JPEG or a PDF, as the page prepared it.
+export const fileUrl = (sourceId) => '/api/files/' + sourceId;
+
+export async function putFile(sourceId, blob) {
+  const res = await fetch('/api/files/' + sourceId, { method: 'PUT', headers: { 'content-type': blob.type }, body: blob });
+  if (!res.ok) throw new Error((await res.json()).error);
+}
+
 // Get ready to read the record. Resolves to the name of a text to keep on screen, or null.
 export const start = async () => null;
 

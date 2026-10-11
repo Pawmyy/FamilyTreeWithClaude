@@ -109,6 +109,8 @@ ul.rows em { color: var(--ok); font-style: normal; font-weight: 600; font-size: 
 li.version { display: grid; }
 li.version > div { width: 100%; }
 li.version input, li.version select { min-height: 34px; padding: 4px 8px; font-size: 14px; }
+/* A source attached to a version: its name, and the ✕ that takes it off. */
+ul.rows .chip { flex: none; display: inline-flex; gap: 4px; align-items: center; }
 .draft { padding-top: 10px; border-top: 1px dashed var(--border); }
 
 /* ---- The picture ---- */
@@ -164,10 +166,17 @@ input[type="color"] { width: 48px; flex: none; padding: 2px; cursor: pointer; }
 #toast.error { background: var(--danger); }
 #standing { padding: 6px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--danger); font-size: 14px; }
 .no-map [data-view="map"], .no-map #whereBox { display: none !important; }
-#confirm { max-width: min(360px, calc(100% - 32px)); padding: 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
-#confirm::backdrop { background: rgb(0 0 0 / 0.4); }
+dialog { padding: 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+dialog::backdrop { background: rgb(0 0 0 / 0.4); }
+dialog .answers { display: flex; gap: 8px; }
+dialog .answers > * { flex: 1; width: auto; }
+#confirm { max-width: min(360px, calc(100% - 32px)); }
 #confirm p { margin: 0 0 16px; }
-#confirm .answers { display: flex; gap: 8px; }
+#viewer { width: min(900px, calc(100% - 32px)); max-height: calc(100% - 32px); }
+#viewer[open] { display: grid; gap: 12px; }
+#viewerBody img { display: block; max-width: 100%; max-height: 70vh; margin: auto; }
+#viewerBody iframe { display: block; width: 100%; height: 70vh; border: 1px solid var(--border); border-radius: 8px; }
+a.button { min-height: 40px; padding: 8px 10px; border-radius: 8px; font-weight: 600; text-align: center; text-decoration: none; background: var(--raised); color: var(--text); border: 1px solid var(--border); }
 #confirm #confirmYes { background: var(--danger); color: var(--panel); }
 /* On a phone the picture goes on top and the panel below it. */
 @media (max-width: 700px) {

@@ -40,15 +40,21 @@ const store = createStore(keeper);
 export const api = store.api;
 export const onChange = store.onChange;
 export const photoUrl = store.photo;
+export const fileUrl = store.file;
+
+const asDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = () => reject(new Error('error.image'));
+  reader.readAsDataURL(blob);
+});
 
 export async function putPhoto(nodeId, jpeg) {
-  const data = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('error.image'));
-    reader.readAsDataURL(jpeg);
-  });
-  await store.api('PUT', `photos/${nodeId}`, { data });
+  await store.api('PUT', `photos/${nodeId}`, { data: await asDataUrl(jpeg) });
+}
+
+export async function putFile(sourceId, blob) {
+  await store.api('PUT', `files/${sourceId}`, { type: blob.type, data: await asDataUrl(blob) });
 }
 
 export async function start() {

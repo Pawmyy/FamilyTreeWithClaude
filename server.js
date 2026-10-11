@@ -15,6 +15,7 @@ const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 //             target_id NULL: something about the node itself (field: name | born | died | sex).
 //             target_id set:  a link from node to target (field is the link type, e.g. CHILD_OF).
 //   sources   evidence, attachable to any number of versions.
+//   files     the scan or document a source is, when there is one: a JPEG or a PDF.
 //   log       every change; removals keep the removed rows so they can be restored.
 // AUTOINCREMENT keeps ids from being reused, which is what makes restoring by id safe.
 const SCHEMA = `
@@ -72,6 +73,12 @@ export function openDb(path) {
   }
   // Choices about how the record is shown, such as colors. Not facts, so not versioned or logged.
   db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  // Added after version 2 was in use, so made here for old and new records alike.
+  db.exec(`CREATE TABLE IF NOT EXISTS files (
+    source_id INTEGER PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
+    type      TEXT NOT NULL,
+    data      BLOB NOT NULL
+  )`);
   db.exec('PRAGMA foreign_keys = ON');
   return db;
 }
@@ -121,7 +128,9 @@ export function graph(db) {
     .all()
     .map((row) => describe({ ...row, props: JSON.parse(row.props) }, versions));
   const colors = db.prepare("SELECT value FROM settings WHERE key = 'colors'").get();
-  return { nodes, versions, sources: db.prepare('SELECT * FROM sources').all(), colors: JSON.parse(colors?.value ?? '{}') };
+  // A source's `file` is the type of its file, or '' when it has none.
+  const sources = db.prepare("SELECT *, COALESCE((SELECT type FROM files WHERE source_id = sources.id), '') AS file FROM sources").all();
+  return { nodes, versions, sources, colors: JSON.parse(colors?.value ?? '{}') };
 }
 
 function describe(node, versions) {
@@ -259,6 +268,8 @@ function removeSource(db, id) {
   const removed = {
     sources: db.prepare('SELECT * FROM sources WHERE id = ?').all(id),
     version_sources: db.prepare('SELECT * FROM version_sources WHERE source_id = ?').all(id),
+    files: db.prepare('SELECT * FROM files WHERE source_id = ?').all(id)
+      .map((file) => ({ ...file, data: Buffer.from(file.data).toString('base64') })),
   };
   db.prepare('DELETE FROM sources WHERE id = ?').run(id);
   return removed;
@@ -334,9 +345,9 @@ function restore(db, logId) {
   const entry = db.prepare('SELECT * FROM log WHERE id = ?').get(logId);
   if (!entry?.removed || entry.undone) throw new Error('That change cannot be undone.');
   const removed = JSON.parse(entry.removed);
-  for (const table of ['nodes', 'sources', 'versions', 'version_sources', 'photos']) {
+  for (const table of ['nodes', 'sources', 'versions', 'version_sources', 'photos', 'files']) {
     for (const row of removed[table] ?? []) {
-      if (table === 'photos') row.data = Buffer.from(row.data, 'base64');
+      if (table === 'photos' || table === 'files') row.data = Buffer.from(row.data, 'base64');
       const columns = Object.keys(row);
       db.prepare(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`)
         .run(...Object.values(row));
@@ -395,6 +406,14 @@ function change(db, route, id, body) {
       record(db, { action: 'added', kind: 'source', name: body.title });
       return { id: Number(lastInsertRowid) };
     }
+    case 'PUT sources': {
+      const row = db.prepare('SELECT * FROM sources WHERE id = ?').get(id);
+      if (!row) throw new Error('No such source.');
+      const next = { ...row, ...body };
+      db.prepare('UPDATE sources SET kind = ?, title = ?, note = ? WHERE id = ?').run(next.kind, next.title, next.note, id);
+      record(db, { action: 'changed', kind: 'source', name: next.title });
+      return { id };
+    }
     case 'DELETE sources': {
       const removed = removeSource(db, id);
       record(db, { action: 'removed', kind: 'source', name: removed.sources[0]?.title }, removed);
@@ -413,16 +432,19 @@ function change(db, route, id, body) {
 // ---- HTTP ----
 
 const MAX_PHOTO_BYTES = 1024 * 1024;
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+// A source's file is a picture, which the page re-encodes as JPEG, or a PDF. Nothing else is kept or served.
+const FILE_TYPES = ['image/jpeg', 'application/pdf'];
 
-async function readPhoto(req) {
+async function readBytes(req, limit, tooLarge) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_PHOTO_BYTES) throw new Error('Photo is too large.');
+    if (size > limit) throw new Error(tooLarge);
     chunks.push(chunk);
   }
-  if (!size) throw new Error('Photo is empty.');
+  if (!size) throw new Error('Nothing was sent.');
   return Buffer.concat(chunks);
 }
 
@@ -473,8 +495,22 @@ export function createApp(db, pageDir = PUBLIC) {
       // Photos are always JPEG: the page crops and re-encodes before uploading.
       if (route === 'PUT photos') {
         db.prepare('INSERT INTO photos (node_id, data) VALUES (?, ?) ON CONFLICT (node_id) DO UPDATE SET data = excluded.data')
-          .run(id, await readPhoto(req));
+          .run(id, await readBytes(req, MAX_PHOTO_BYTES, 'Photo is too large.'));
         record(db, { action: 'changed', field: 'photo', name: who(db, id).name });
+        return send(res, 200, {});
+      }
+      if (route === 'GET files') {
+        const file = db.prepare('SELECT type, data FROM files WHERE source_id = ?').get(id);
+        if (!file) return send(res, 404, { error: 'Not found' });
+        res.writeHead(200, { 'content-type': file.type, 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' });
+        return res.end(file.data);
+      }
+      if (route === 'PUT files') {
+        const type = req.headers['content-type'];
+        if (!FILE_TYPES.includes(type)) throw new Error('error.fileKind');
+        if (!db.prepare('SELECT 1 FROM sources WHERE id = ?').get(id)) throw new Error('No such source.');
+        db.prepare('INSERT INTO files (source_id, type, data) VALUES (?, ?, ?) ON CONFLICT (source_id) DO UPDATE SET type = excluded.type, data = excluded.data')
+          .run(id, type, await readBytes(req, MAX_FILE_BYTES, 'error.fileTooLarge'));
         return send(res, 200, {});
       }
 

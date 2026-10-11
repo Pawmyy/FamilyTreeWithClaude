@@ -196,6 +196,35 @@ test('a photo can be uploaded, replaced and fetched; oversized uploads are refus
   assert.equal(tooBig.status, 400);
 });
 
+test('a source can be renamed and carry a file, which goes and comes back with it', async () => {
+  const id = (await call('POST', '/api/sources', { kind: 'other', title: 'scan0001' })).body.id;
+  const source = async () => (await getGraph()).sources.find((s) => s.id === id);
+  assert.equal((await source()).file, '');
+
+  await call('PUT', `/api/sources/${id}`, { kind: 'certificate', title: 'Birth certificate' });
+  assert.deepEqual(await source(), { id, kind: 'certificate', title: 'Birth certificate', note: '', file: '' });
+
+  const file = `${base}/api/files/${id}`;
+  const put = (type, body) => fetch(file, { method: 'PUT', headers: { 'content-type': type }, body });
+  assert.equal((await fetch(file)).status, 404);
+  assert.equal((await put('text/html', '<script>')).status, 400, 'only a picture or a PDF is kept');
+  assert.equal((await put('application/pdf', new Uint8Array(5 * 1024 * 1024 + 1))).status, 400);
+  assert.equal((await fetch(`${base}/api/files/999999`, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: 'x' })).status, 400);
+  assert.equal((await put('application/pdf', new Uint8Array([7, 8, 9]))).status, 200);
+  assert.equal((await source()).file, 'application/pdf');
+  const read = async () => {
+    const res = await fetch(file);
+    return [res.status, res.headers.get('content-type'), [...new Uint8Array(await res.arrayBuffer())]];
+  };
+  assert.deepEqual(await read(), [200, 'application/pdf', [7, 8, 9]]);
+
+  await call('DELETE', `/api/sources/${id}`);
+  assert.equal((await fetch(file)).status, 404);
+  const log = (await call('GET', '/api/log')).body;
+  await call('POST', `/api/log/${log.find((entry) => entry.summary.action === 'removed').id}/undo`);
+  assert.deepEqual(await read(), [200, 'application/pdf', [7, 8, 9]]);
+});
+
 test('color choices are kept with the record, and a place keeps where it is', async () => {
   assert.deepEqual((await getGraph()).colors, {});
   const colors = { family: { Srisai: '#ff00aa' }, link: { CHILD_OF: '#123456' }, kind: { place: '#00ff00' } };

@@ -4,10 +4,14 @@
 // in memory only and says so.
 import { createStore, TABLES } from './store.js';
 
-const ERRORS = { invalid_argument: 'error.readOnly', not_granted: 'error.readOnly', revoked: 'error.readOnly', quota_exceeded: 'error.full' };
+const ERRORS = {
+  invalid_argument: 'error.readOnly', not_granted: 'error.readOnly', revoked: 'error.readOnly', quota_exceeded: 'error.full',
+  too_large: 'error.fileTooLarge', unsupported_type: 'error.fileKind', quota_or_state: 'error.full',
+};
 const AT_ONCE = 4;
 
 let db = null;
+let assets = null; // the artifact's own file store; only those who may change the record are given it
 
 const keeper = {
   // Each table is a collection, watched for as long as the page is open.
@@ -44,6 +48,20 @@ const store = createStore(keeper);
 export const api = store.api;
 export const onChange = store.onChange;
 export const photoUrl = store.photo;
+export const fileUrl = store.file;
+
+// A source's file is too big for a row of the database, so it goes to the artifact's file store and the
+// row keeps where to read it from. A removed source leaves its file there, for undoing the removal.
+export async function putFile(sourceId, blob) {
+  if (!assets) throw new Error('error.readOnly');
+  let kept;
+  try {
+    kept = await assets.upload(blob);
+  } catch (err) {
+    throw new Error(ERRORS[err?.code] ?? 'error.notSaved');
+  }
+  await store.api('PUT', `files/${sourceId}`, { type: blob.type, data: '/_blob/' + kept.id });
+}
 
 export async function putPhoto(nodeId, jpeg) {
   const data = await new Promise((resolve, reject) => {
@@ -57,6 +75,7 @@ export async function putPhoto(nodeId, jpeg) {
 
 export async function start() {
   db = (await window.claude?.use('db')) ?? null;
+  assets = (await window.claude?.use('assets')) ?? null;
   await store.start();
   return db ? null : 'notice.unsaved';
 }

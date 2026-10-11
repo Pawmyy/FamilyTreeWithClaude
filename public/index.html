@@ -169,6 +169,7 @@
         <select id="sourceKind"></select>
         <input id="sourceTitle" data-i18n-placeholder="record.sourceTitle">
         <input id="sourceNote" data-i18n-placeholder="record.sourceNote">
+        <label><span data-i18n="record.sourceFile"></span><input type="file" id="sourceFile" accept="image/*,application/pdf"></label>
         <button id="addSource" data-i18n="record.addSource"></button>
       </div>
     </details>
@@ -217,6 +218,16 @@
   <div class="answers">
     <button id="confirmNo" class="ghost" data-i18n="confirm.no"></button>
     <button id="confirmYes" data-i18n="confirm.yes"></button>
+  </div>
+</dialog>
+
+<!-- A source's file: a picture or a PDF, shown over the page. -->
+<dialog id="viewer">
+  <strong id="viewerTitle"></strong>
+  <div id="viewerBody"></div>
+  <div class="answers">
+    <a id="viewerSave" class="button ghost" data-i18n="record.saveFile"></a>
+    <button id="viewerClose" data-i18n="record.closeFile"></button>
   </div>
 </dialog>
 

@@ -1,7 +1,7 @@
 import ForceGraph3D from 'https://esm.sh/3d-force-graph@1.80.1?deps=three@0.186.1';
 import SpriteText from 'https://esm.sh/three-spritetext@1.10.0?deps=three@0.186.1';
 import * as THREE from 'https://esm.sh/three@0.186.1';
-import { api, onChange, photoUrl, putPhoto, start } from './backend.js';
+import { api, fileUrl, onChange, photoUrl, putFile, putPhoto, start } from './backend.js';
 import { createFinder, rank } from './finder.js';
 import { getLang, has, LANGS, setLang, t } from './i18n.js';
 import { closeness, isDescent, kinship, shortestPath } from './kinship.js';
@@ -864,19 +864,97 @@ function versionRow(v) {
   by.setAttribute('list', 'people');
   by.onchange = () => act(() => api('PUT', 'versions/' + v.id, according(by.value)), t('toast.saved'));
 
+  // Each source by name, which opens its file when it has one, and a ✕ that takes it off this version.
   const sources = el('div');
   for (const id of v.sources) {
     const source = g.sources.find((s) => s.id === id);
-    sources.append(button(`${source.title} ✕`, () =>
-      act(() => api('PUT', 'versions/' + v.id, { sources: v.sources.filter((other) => other !== id) }), t('toast.saved')), 'ghost'));
+    const detach = button('✕', () =>
+      act(() => api('PUT', 'versions/' + v.id, { sources: v.sources.filter((other) => other !== id) }), t('toast.saved')), 'ghost');
+    detach.title = t('record.detach');
+    sources.append(el('span', { className: 'chip' }));
+    sources.lastChild.append(sourceName(source), detach);
   }
   const attach = el('select');
   attach.append(new Option(t('record.attach'), ''), ...g.sources.filter((s) => !v.sources.includes(s.id)).map((s) => new Option(`${s.title} (${t('source.' + s.kind)})`, s.id)));
   attach.onchange = () => act(() => api('PUT', 'versions/' + v.id, { sources: [...v.sources, Number(attach.value)] }), t('toast.saved'));
+  // A file becomes a source of its own, attached here at once.
+  const attachFile = filePicker(t('record.attachFile'), async (file) => {
+    const id = await addSource(file);
+    await api('PUT', 'versions/' + v.id, { sources: [...v.sources, id] });
+    return t('toast.added');
+  });
 
   const row = el('li', { className: 'version' + (v.accepted ? ' active' : '') });
-  row.append(head, by, sources, attach);
+  row.append(head, by, sources, attach, attachFile);
   return row;
+}
+
+// ---- Sources and their files ----
+
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const FILE_ENDING = { 'image/jpeg': '.jpg', 'application/pdf': '.pdf' };
+
+// What is kept of a file given as a source: a PDF as it is, a picture as a JPEG no larger than it needs to be.
+async function sourceFile(file) {
+  const isPicture = file.type.startsWith('image/');
+  if (!isPicture && file.type !== 'application/pdf') throw new Error(t('error.fileKind'));
+  const kept = isPicture ? await shrunkJpeg(file) : file;
+  if (kept.size > MAX_FILE_BYTES) throw new Error(t('error.fileTooLarge'));
+  return kept;
+}
+
+// A new source. Given a file, the file is kept with it, and its name and kind stand in for any not given.
+async function addSource(file, { kind, title, note = '' } = {}) {
+  // Read the file first, so an unreadable one stops the add instead of leaving a source without it.
+  const kept = file && await sourceFile(file);
+  const named = title || file?.name.replace(/\.[^.]+$/, '');
+  if (!named) throw new Error(t('record.needTitle'));
+  const { id } = await api('POST', 'sources', { kind: kind ?? (kept?.type === 'image/jpeg' ? 'photo' : 'other'), title: named, note });
+  if (kept) await putFile(id, kept);
+  return id;
+}
+
+// A button that asks for a picture or a PDF and hands it to `onFile`, which is run as an action.
+function filePicker(text, onFile) {
+  const input = el('input', { type: 'file', accept: 'image/*,application/pdf', hidden: true });
+  input.onchange = () => {
+    const [file] = input.files;
+    input.value = '';
+    if (file) act(() => onFile(file));
+  };
+  // The input sits inside the button, so its own click must not come back up as the button's.
+  input.onclick = (evt) => evt.stopPropagation();
+  const pick = button(text, () => input.click(), 'ghost');
+  pick.append(input);
+  return pick;
+}
+
+// A source's name: a button that opens its file when it has one, otherwise plain text.
+function sourceName(source) {
+  if (!source.file) return el('span', { textContent: source.title });
+  const open = button(`📎 ${source.title}`, () => openFile(source), 'ghost');
+  open.title = t('record.openFile');
+  return open;
+}
+
+// Show a source's file in the page, with a link to save it or open it elsewhere.
+async function openFile(source) {
+  let url;
+  try {
+    // Read whole and shown from memory, so it looks the same wherever the record keeps it.
+    url = URL.createObjectURL(await (await fetch(fileUrl(source.id))).blob());
+  } catch {
+    return notify(t('error.fileGone'), true);
+  }
+  const isPdf = source.file === 'application/pdf';
+  $('viewerBody').replaceChildren(isPdf ? el('iframe', { src: url, title: source.title }) : el('img', { src: url, alt: source.title }));
+  $('viewerTitle').textContent = source.title;
+  Object.assign($('viewerSave'), { href: url, download: source.title + FILE_ENDING[source.file] });
+  $('viewer').onclose = () => {
+    $('viewerBody').replaceChildren();
+    URL.revokeObjectURL(url);
+  };
+  $('viewer').showModal();
 }
 
 const FIELD_KEYS = { name: ['given', 'family', 'from', 'reason'], born: ['date'], died: ['date'], sex: ['sex'] };
@@ -945,12 +1023,29 @@ function renderRecord() {
 
   $('sourceList').replaceChildren(...g.sources.map((source) => {
     const used = g.versions.filter((v) => v.sources.includes(source.id)).length;
-    const text = `${source.title} · ${t('source.' + source.kind)} · ${t('record.supports', { count: used })}`;
-    const row = el('li');
-    row.append(el('span', { textContent: text, title: source.note }), button('✕', () => act(async () => {
-      if (!await confirmRemove()) return false;
-      await api('DELETE', 'sources/' + source.id);
-    }, t('toast.removed')), 'danger'));
+    const change = (patch) => act(() => api('PUT', 'sources/' + source.id, patch), t('toast.saved'));
+    const title = el('input', { value: source.title, title: source.note });
+    title.setAttribute('aria-label', t('record.sourceTitle'));
+    title.onchange = () => (title.value.trim() ? change({ title: title.value.trim() }) : notify(t('record.needTitle'), true));
+    const kind = el('select');
+    kind.append(...SOURCE_KINDS.map((value) => new Option(t('source.' + value), value)));
+    kind.value = source.kind;
+    kind.onchange = () => change({ kind: kind.value });
+    const foot = el('div');
+    foot.append(
+      el('span', { textContent: t('record.supports', { count: used }) }),
+      source.file ? sourceName({ ...source, title: t('record.openFile') })
+        : filePicker(t('record.addFile'), async (file) => {
+          await putFile(source.id, await sourceFile(file));
+          return t('toast.saved');
+        }),
+      button('✕', () => act(async () => {
+        if (!await confirmRemove()) return false;
+        await api('DELETE', 'sources/' + source.id);
+      }, t('toast.removed')), 'danger'),
+    );
+    const row = el('li', { className: 'version' });
+    row.append(title, kind, foot);
     return row;
   }));
 
@@ -1173,6 +1268,17 @@ function linkForm() {
   return { node, target, field, value: kind ? { kind } : {}, ...by };
 }
 
+// A picture as a JPEG whose longer side is at most `longest`, which keeps a scan readable and the record light.
+async function shrunkJpeg(file, longest = 1600) {
+  const image = await createImageBitmap(file).catch(() => {
+    throw new Error(t('error.image'));
+  });
+  const scale = Math.min(1, longest / Math.max(image.width, image.height));
+  const canvas = Object.assign(document.createElement('canvas'), { width: Math.round(image.width * scale), height: Math.round(image.height * scale) });
+  canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+}
+
 // Center-crop to a small square JPEG so photos stay light in the database and in the 3D scene.
 async function squareJpeg(file, size = 256) {
   const image = await createImageBitmap(file).catch(() => {
@@ -1238,11 +1344,12 @@ on('rivalLink', async () => {
 });
 
 on('addSource', async () => {
-  if (!$('sourceTitle').value.trim()) throw new Error(t('record.needTitle'));
-  await api('POST', 'sources', { kind: $('sourceKind').value, title: $('sourceTitle').value.trim(), note: $('sourceNote').value.trim() });
-  $('sourceTitle').value = $('sourceNote').value = '';
+  const [file] = $('sourceFile').files;
+  await addSource(file, { kind: $('sourceKind').value, title: $('sourceTitle').value.trim(), note: $('sourceNote').value.trim() });
+  $('sourceTitle').value = $('sourceNote').value = $('sourceFile').value = '';
   return t('toast.added');
 });
+$('viewerClose').onclick = () => $('viewer').close();
 
 $('delLink').onclick = () => deleteLink(selected.id);
 $('newNode').onclick = () => select(null);

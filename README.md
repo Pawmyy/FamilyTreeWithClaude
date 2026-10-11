@@ -26,6 +26,7 @@ Terms are defined in `GLOSSARY.md`; the reasons behind the main design choices a
 | `nodes(id, kind, name, props)` | People, households, places, events. `props` is JSON for single-valued details: notes, nickname, a household's or place's dates. |
 | `versions(id, fact_id, node_id, field, target_id, value, accepted, according_to, according_node)` | Every fact, as one or more competing accounts. |
 | `sources(id, kind, title, note)` and `version_sources` | Evidence, attachable to any number of versions. |
+| `files(source_id, type, data)` | The picture or PDF a source is, when there is one. |
 | `settings(key, value)` | Choices about how the record is shown, such as colors. Not facts, so not versioned. |
 | `photos(node_id, data)` | One photo per node, cropped to a 256px square JPEG by the page before upload. |
 | `log(id, at, summary, removed, undone)` | Every change. A removal keeps the removed rows, so it can be undone. |
@@ -83,6 +84,8 @@ The panel folds away with the ☰ button, or by clicking the open tab again.
 - **Related**: how two people are related.
 - **View**: the timeline, whether places and events are drawn in 3D and 2D, whether closeness lines are drawn and for how many steps apart, the colors shared by many things, the list of sources, and the edit log, where removals can be undone.
 
+A source can carry a file: a picture, which is kept as a JPEG no more than 1600 pixels on its longer side, or a PDF, up to 5 MB. **Attach a file as a source…** on any version makes a source from a file and attaches it in one step; a source's name then opens its file. Removing a source removes its file, and undoing the removal brings both back.
+
 ## As an app
 
 The same page is packaged as an app to install. Pushing a tag such as `v0.1.0` runs
@@ -116,7 +119,8 @@ A record kept on a phone lives only on that phone: there is no copy elsewhere un
 no server there, so `web/store.js` does in the browser what `server.js` does with SQLite, and
 `web/backend.artifact.js` keeps its rows in the artifact's shared database: everyone the artifact is shared
 with as a contributor edits the same family, and sees each other's changes as they happen. `test/store.test.js`
-holds the two to the same behavior. The Map view and looking places up are left out, because an artifact
+holds the two to the same behavior. A source's file goes to the artifact's file store, so the artifact has to be
+published with the `assets` capability beside `db` for files to be attached. The Map view and looking places up are left out, because an artifact
 cannot reach a map service.
 
 ## Languages and themes

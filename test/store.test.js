@@ -45,6 +45,7 @@ async function story(api) {
   await api('POST', `versions/${rival}/accept`);
   await api('PUT', 'versions/' + born, { value: { note: 'doubtful' }, sources: [source] });
   await api('DELETE', 'versions/' + rival);
+  await api('PUT', 'sources/' + source, { kind: 'register', title: 'House register' });
   await api('DELETE', 'sources/' + source);
   await api('PUT', 'colors', { family: { Srisai: '#aa0000' } });
   await api('DELETE', 'nodes/' + malee);
@@ -78,6 +79,23 @@ test('the browser store keeps the same record as the server', async () => {
   const { api, written } = memoryStore();
   assert.deepEqual(byPlace(await story(api)), byPlace(await story(server)));
   assert.ok(written.length, 'changes are handed to the keeper');
+});
+
+test("a source's file goes with the source and comes back with it", async () => {
+  const store = createStore({ start: async () => {}, write: async () => {} });
+  const { id } = await store.api('POST', 'sources', { kind: 'photo', title: 'Wedding' });
+  const file = async () => (await store.api('GET', 'graph')).sources[0]?.file;
+  assert.equal(await file(), '');
+  await assert.rejects(store.api('PUT', 'files/999', { type: 'image/jpeg', data: 'data:,' }), /No such source/);
+  await store.api('PUT', `files/${id}`, { type: 'image/jpeg', data: 'data:image/jpeg;base64,AAAA' });
+  assert.equal(await file(), 'image/jpeg');
+  assert.equal(store.file(id), 'data:image/jpeg;base64,AAAA');
+
+  await store.api('DELETE', `sources/${id}`);
+  assert.equal(store.file(id), '');
+  await store.api('POST', `log/${(await store.api('GET', 'log')).find((entry) => entry.removable).id}/undo`);
+  assert.equal(await file(), 'image/jpeg');
+  assert.equal(store.file(id), 'data:image/jpeg;base64,AAAA');
 });
 
 test('a change the keeper cannot write is not kept', async () => {

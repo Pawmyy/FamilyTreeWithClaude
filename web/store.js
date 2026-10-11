@@ -4,6 +4,7 @@
 //   nodes     { id, kind, name, props }
 //   versions  { id, fact, node, field, target, value, accepted, accordingTo, accordingNode, sources: [id] }
 //   sources   { id, kind, title, note }
+//   files     { id: the source's id, type, data: where the file is read from, a data: URL or a path }
 //   photos    { id: the node's id, data: a JPEG as a data: URL }
 //   log       { id, at, summary, removed, undone }
 //   settings  { id: 'colors', value }
@@ -13,7 +14,7 @@
 // Rows are never changed in place: a change puts a new row, so a keeper may hand out frozen ones.
 import { fullName, nameRecord } from '../public/record.js';
 
-export const TABLES = ['nodes', 'versions', 'sources', 'photos', 'log', 'settings'];
+export const TABLES = ['nodes', 'versions', 'sources', 'photos', 'files', 'log', 'settings'];
 const LOG_KEPT = 200;
 
 // The same text for the same rows, whatever order their fields were written in.
@@ -41,8 +42,8 @@ export function createStore(keeper) {
     T[table].delete(id);
     dirty.set(table + '/' + id, { table, id });
   };
-  // Photos are told apart by size alone: comparing the pictures themselves would be slow.
-  const picture = () => canon(TABLES.map((table) => (table === 'photos' ? rows(table).map((p) => [p.id, p.data.length]) : rows(table))));
+  // Photos and files are told apart by size alone: comparing them whole would be slow.
+  const picture = () => canon(TABLES.map((table) => (table === 'photos' || table === 'files' ? rows(table).map((p) => [p.id, p.data.length]) : rows(table))));
 
   // ---- Reading ----
 
@@ -67,7 +68,8 @@ export function createStore(keeper) {
     return {
       nodes: rows('nodes').map((node) => describe({ ...node, photo: T.photos.has(node.id) }, versions)),
       versions,
-      sources: rows('sources'),
+      // A source's `file` is the type of its file, or '' when it has none.
+      sources: rows('sources').map((source) => ({ ...source, file: T.files.get(source.id)?.type ?? '' })),
       colors: T.settings.get('colors')?.value ?? {},
     };
   }
@@ -172,8 +174,13 @@ export function createStore(keeper) {
 
   function removeSource(id) {
     const cited = rows('versions').filter((v) => v.sources.includes(id));
-    const removed = { sources: [T.sources.get(id)].filter(Boolean), citations: cited.map((v) => ({ version: v.id, source: id })) };
+    const removed = {
+      sources: [T.sources.get(id)].filter(Boolean),
+      citations: cited.map((v) => ({ version: v.id, source: id })),
+      files: [T.files.get(id)].filter(Boolean),
+    };
     for (const v of cited) put('versions', { ...v, sources: v.sources.filter((other) => other !== id) });
+    drop('files', id);
     drop('sources', id);
     return removed;
   }
@@ -238,7 +245,7 @@ export function createStore(keeper) {
   function restore(logId) {
     const entry = T.log.get(logId);
     if (!entry?.removed || entry.undone) throw new Error('That change cannot be undone.');
-    for (const table of ['nodes', 'sources', 'versions', 'photos']) {
+    for (const table of ['nodes', 'sources', 'versions', 'photos', 'files']) {
       for (const row of entry.removed[table] ?? []) put(table, row);
     }
     for (const { version, source } of entry.removed.citations ?? []) {
@@ -297,6 +304,17 @@ export function createStore(keeper) {
         record({ action: 'added', kind: 'source', name: body.title });
         return { id: sourceId };
       }
+      case 'PUT sources': {
+        const row = T.sources.get(id);
+        if (!row) throw new Error('No such source.');
+        const next = put('sources', { ...row, kind: body.kind ?? row.kind, title: body.title ?? row.title, note: body.note ?? row.note });
+        record({ action: 'changed', kind: 'source', name: next.title });
+        return { id };
+      }
+      case 'PUT files':
+        if (!T.sources.has(id)) throw new Error('No such source.');
+        put('files', { id, type: body.type, data: body.data });
+        return {};
       case 'DELETE sources': {
         const removed = removeSource(id);
         record({ action: 'removed', kind: 'source', name: removed.sources[0]?.title }, removed);
@@ -351,6 +369,7 @@ export function createStore(keeper) {
     start: () => keeper.start(onTable),
     onChange: (changed) => watchers.push(changed),
     photo: (nodeId) => T.photos.get(nodeId)?.data ?? '',
+    file: (sourceId) => T.files.get(sourceId)?.data ?? '',
     // The same requests the local server answers: api('PUT', 'nodes/12', body) and so on.
     async api(method, path, body = {}) {
       const [collection, rawId, action] = path.split('/');
