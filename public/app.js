@@ -30,6 +30,7 @@ let timeline = null; // { from, to } in years, while the timeline is on
 let seen = new Map(); // what the filters make of each node: 'shown', 'faded' or 'hidden' (see sight)
 let closeLines = false; // whether 3D and 2D draw closeness lines
 let maxSteps = 2; // closeness lines join people up to this many steps apart
+let showOthers = true; // whether 3D and 2D draw places and events
 let shiftHeld = false;
 let mapView = null; // made the first time the map is opened
 let placing = null; // id of a place waiting for a click on the map
@@ -41,6 +42,8 @@ const prefs = {
   get: (key) => { try { return localStorage.getItem(key); } catch { return null; } },
   set: (key, value) => { try { localStorage.setItem(key, value); } catch { /* not remembered */ } },
 };
+
+showOthers = prefs.get('others') !== 'hidden';
 
 // ---- Theme ----
 
@@ -404,6 +407,8 @@ function draw() {
   seen = sight();
   const scene = view === 'tree' ? treeScene() : graphScene();
   const state = (ref) => seen.get(ref) ?? 'shown';
+  // With places and events switched off, their lines go with them: a line needs both its ends.
+  if (!showOthers) scene.nodes = scene.nodes.filter((n) => n.kind !== 'place' && n.kind !== 'event');
   scene.nodes = scene.nodes.filter((n) => state(n.ref) !== 'hidden').map((n) => ({ ...n, faded: state(n.ref) === 'faded' }));
   const kept = new Map(scene.nodes.map((n) => [n.id, n]));
   scene.links = scene.links.filter((l) => kept.has(l.source) && kept.has(l.target))
@@ -487,9 +492,10 @@ function setPlace(id, { lat, lng }) {
 }
 
 // Bring a node to the middle of the picture, close enough to read, without changing which way you are looking.
-function lookAt(id) {
+function lookAt(id, retry = true) {
   const node = Graph.graphData().nodes.find((n) => n.id === id);
-  if (node?.x === undefined) return;
+  // Something only just drawn has no place yet; give it a moment to find one.
+  if (node?.x === undefined) return node && retry && setTimeout(() => lookAt(id, false), 800);
   const aim = new THREE.Vector3(node.x, node.y, node.z ?? 0);
   const backOff = Graph.camera().position.clone().sub(Graph.controls().target).normalize().multiplyScalar(200);
   fly(aim.clone().add(backOff), aim, 800);
@@ -674,6 +680,8 @@ for (const [id, kinds] of Object.entries(FINDER_KINDS)) {
 
 function openNode(id) {
   finders.search.set(null);
+  // Asking for a place or an event that is switched off brings them back.
+  if (!showOthers && view !== 'map' && ['place', 'event'].includes(byId.get(id)?.kind)) setOthers(true);
   select({ group: 'nodes', id });
   showTab('edit');
   if (view !== 'map') lookAt(id);
@@ -1238,6 +1246,13 @@ $('closeOn').onchange = $('closeSteps').oninput = () => {
   $('closeLabel').textContent = t('close.upTo', { count: maxSteps });
   Graph.linkVisibility(linkVisible);
 };
+function setOthers(on) {
+  showOthers = $('othersOn').checked = on;
+  prefs.set('others', on ? 'shown' : 'hidden');
+  draw();
+}
+$('othersOn').checked = showOthers;
+$('othersOn').onchange = () => setOthers($('othersOn').checked);
 // A handle stops at the other one, so the span never turns inside out.
 for (const [id, other, limit] of [['timelineFrom', 'timelineTo', Math.min], ['timelineTo', 'timelineFrom', Math.max]]) {
   $(id).oninput = () => {
