@@ -22,7 +22,7 @@ let view = '3d'; // '3d' | '2d' | 'tree' | 'map'
 let framed = false;
 let showRivals = false;
 let relation = null; // which relative is being added: 'parent' | 'partner' | 'child' | 'sibling'
-let bounds = null; // the box the camera's aim is kept inside, so the family cannot be dragged out of sight
+let flyingUntil = 0; // while the camera is being moved for the user, the pan limit stands aside
 let mapView = null; // made the first time the map is opened
 let placing = null; // id of a place waiting for a click on the map
 let lookUpNext = null; // id of a place to look up once the record has reloaded
@@ -170,8 +170,6 @@ const Graph = new ForceGraph3D($('graph'))
   .onBackgroundClick(() => selected && select(null))
   .cooldownTime(3000)
   .onEngineStop(() => {
-    const box = Graph.getGraphBbox();
-    bounds = box && { min: new THREE.Vector3(box.x[0], box.y[0], box.z[0]), max: new THREE.Vector3(box.x[1], box.y[1], box.z[1]) };
     // Frame the graph when it settles after a change in its shape or view; otherwise the camera is the user's.
     if (!framed) frame();
     framed = true;
@@ -180,12 +178,22 @@ Graph.d3Force('link').distance((l) => l.distance);
 // Cap the range of repulsion so unconnected families stay nearby instead of drifting off.
 Graph.d3Force('charge').distanceMax(120);
 
-// Panning moves the point the camera aims at. Keep that point inside the family's bounding box,
+// Move the camera for the user. Such a move starts by aiming far ahead of the camera, well outside
+// the family, so the pan limit must not act on it.
+function fly(position, aim, ms) {
+  flyingUntil = performance.now() + ms + 200;
+  Graph.cameraPosition(position, aim, ms);
+}
+
+// Panning moves the point the camera aims at. Keep that point inside the box around the family,
 // carrying the camera along, so the picture can be pushed to the edge of the screen but not off it.
 Graph.controls().addEventListener('change', () => {
-  if (!bounds) return;
+  const nodes = Graph.graphData().nodes.filter((n) => n.x !== undefined);
+  if (!nodes.length || performance.now() < flyingUntil) return;
+  // Measured from the nodes' own positions, which are right even while their shapes are being redrawn.
+  const edge = (pick) => new THREE.Vector3(...['x', 'y', 'z'].map((axis) => pick(...nodes.map((n) => n[axis] ?? 0))));
   const { target } = Graph.controls();
-  const back = target.clone().clamp(bounds.min, bounds.max).sub(target);
+  const back = target.clone().clamp(edge(Math.min), edge(Math.max)).sub(target);
   if (!back.lengthSq()) return;
   target.add(back);
   Graph.camera().position.add(back);
@@ -196,6 +204,7 @@ function frame() {
   const controls = Graph.controls();
   controls.minDistance = 60;
   controls.maxDistance = Infinity;
+  flyingUntil = performance.now() + 700;
   Graph.zoomToFit(500, 80);
   setTimeout(() => {
     controls.maxDistance = Math.max(120, Graph.camera().position.distanceTo(controls.target) * 1.25);
@@ -233,7 +242,6 @@ function setView(next) {
   // The tree has nothing to settle, so frame it almost at once.
   Graph.cooldownTime(view === 'tree' ? 300 : 3000);
   framed = false;
-  bounds = null;
   draw();
   resize();
 }
@@ -351,16 +359,13 @@ function setPlace(id, { lat, lng }) {
   return act(() => api('PUT', 'nodes/' + id, { name: place.name, props: { ...place.props, lat, lng } }), t('map.saved'));
 }
 
-// Turn the camera to a node, from close enough to read it.
+// Bring a node to the middle of the picture, close enough to read, without changing which way you are looking.
 function lookAt(id) {
   const node = Graph.graphData().nodes.find((n) => n.id === id);
   if (node?.x === undefined) return;
-  if (view === '3d') {
-    const stretch = 1 + 140 / (Math.hypot(node.x, node.y, node.z) || 1);
-    Graph.cameraPosition({ x: node.x * stretch, y: node.y * stretch, z: node.z * stretch }, node, 800);
-  } else {
-    Graph.cameraPosition({ x: node.x, y: node.y, z: 220 }, { x: node.x, y: node.y, z: 0 }, 800);
-  }
+  const aim = new THREE.Vector3(node.x, node.y, node.z ?? 0);
+  const backOff = Graph.camera().position.clone().sub(Graph.controls().target).normalize().multiplyScalar(200);
+  fly(aim.clone().add(backOff), aim, 800);
 }
 
 // ---- Data and text ----
